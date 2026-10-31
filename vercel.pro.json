@@ -1,8 +1,20 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": [
+    "iad1"
+  ],
   "crons": [
-    { "path": "/api/cron/tick", "schedule": "30-59 13 * * 1-5" },
-    { "path": "/api/cron/tick", "schedule": "* 14-15 * * 1-5" },
-    { "path": "/api/cron/tick", "schedule": "0 16 * * 1-5" }
+    {
+      "path": "/api/cron/tick",
+      "schedule": "30-59 13 * * 1-5"
+    },
+    {
+      "path": "/api/cron/tick",
+      "schedule": "* 14-15 * * 1-5"
+    },
+    {
+      "path": "/api/cron/tick",
+      "schedule": "0 16 * * 1-5"
+    }
   ]
 }

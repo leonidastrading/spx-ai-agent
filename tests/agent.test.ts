@@ -150,6 +150,14 @@ describe("runTick", () => {
     expect(r.status).toBe("skipped");
     expect(mem.runs).toHaveLength(1);
     expect(mem.runs[0].status).toBe("skipped");
+    expect(requests).toEqual([]); // off-hours: no Alpaca request at all
+  });
+
+  it("checks the Alpaca calendar inside the window (holidays)", async () => {
+    const { runTick } = await import("@/lib/agent");
+    const r = await runTick(new Date("2024-07-04T14:00:00Z")); // Thursday 10:00 EDT, Independence Day
+    expect(r.status).toBe("skipped");
+    expect(r.notes[0]).toMatch(/not a trading day/);
     expect(requests.map((u) => u.pathname)).toEqual(["/v2/calendar"]);
   });
 

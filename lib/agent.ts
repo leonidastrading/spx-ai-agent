@@ -30,6 +30,11 @@ let feedCache: { date: string; feed: Feed } | null = null;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function runTick(now = new Date()): Promise<TickResult> {
+  // Weekend / outside-window calls skip before any Alpaca request (holidays need the calendar).
+  const etPre = toEt(now);
+  const pre = cronGate(now, { date: etPre.date, open: SCHEDULE.windowStart, close: "16:00" }, SCHEDULE);
+  if (pre.action === "skip") return skipRun(pre.reason);
+
   const alpaca = new AlpacaClient({
     creds: credsFromEnv(),
     referenceHost: referenceHostFromEnv(),
@@ -40,11 +45,7 @@ export async function runTick(now = new Date()): Promise<TickResult> {
   const sessions = await alpaca.getCalendar(addDays(etNow.date, -10), etNow.date);
   const gate = cronGate(now, sessionOn(sessions, etNow.date), SCHEDULE);
 
-  if (gate.action === "skip") {
-    const id = await store.startRun("skip", null);
-    await store.finishRun(id, { status: "skipped", detail: gate.reason });
-    return { status: "skipped", action: "skip", minuteEt: null, feed: null, rowsWritten: {}, notes: [gate.reason] };
-  }
+  if (gate.action === "skip") return skipRun(gate.reason);
 
   const { session, et } = gate;
   const prior = priorSession(sessions, session.date);
@@ -86,6 +87,12 @@ export async function runTick(now = new Date()): Promise<TickResult> {
     await store.finishRun(runId, { status: "error", feed, rowsWritten: rows, detail: notes.join("; ") || undefined, error: message });
     return { status: "error", action: gate.action, minuteEt, feed, rowsWritten: rows, notes, error: message };
   }
+}
+
+async function skipRun(reason: string): Promise<TickResult> {
+  const id = await store.startRun("skip", null);
+  await store.finishRun(id, { status: "skipped", detail: reason });
+  return { status: "skipped", action: "skip", minuteEt: null, feed: null, rowsWritten: {}, notes: [reason] };
 }
 
 /** Fetch bars and headlines newer than what's stored, up to `end` (exclusive). */
