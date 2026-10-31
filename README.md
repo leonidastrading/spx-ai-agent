@@ -35,7 +35,10 @@ The only other outbound calls are to the Anthropic API (once a day, at 10:50 ET)
 | 10:51 | Email: the LLM's market read, a table of strategy / LLM call / rule call, and the top 5 headlines. |
 | 10:51–11:05 | Catch-up only. If the 10:50 run was missed or failed, the decision and email run late, still before the 11:11 "Short" entry. No more data is ingested. |
 
-**Cron.** `vercel.json` schedules `/api/cron/tick` every minute from 13:30 to 16:00 UTC, Mon–Fri. Vercel cron
+**Cron.** `vercel.pro.json` holds the schedule: `/api/cron/tick` every minute from 13:30 to 16:00 UTC, Mon–Fri.
+**To turn the schedule on, upgrade the Vercel team to Pro and copy `vercel.pro.json` over `vercel.json`.** Vercel
+rejects any deployment whose `vercel.json` has a more-than-daily cron on the Hobby plan, so the committed
+`vercel.json` has no crons and the dashboard deploys on Hobby. Vercel cron
 runs in UTC, and that window covers both EDT (09:30 ET = 13:30 UTC) and EST (09:30 ET = 14:30 UTC). Each run
 converts the time to America/New_York and checks the Alpaca calendar. Outside a trading day or the window it logs
 a `skipped` run and exits. **Per-minute cron needs a Vercel Pro (or higher) plan**: Hobby crons run at most once
