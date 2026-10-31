@@ -11,6 +11,8 @@ export interface SummaryInput {
   rule: StrategyCall[];
   headlines: Array<{ ts: string; headline: string; url?: string }>;
   dashboardUrl?: string;
+  /** Defaults to config/strategies.ts. */
+  strategyNames?: string[];
 }
 
 function esc(s: string): string {
@@ -26,12 +28,16 @@ export function buildSummaryEmail(s: SummaryInput): { subject: string; html: str
   const rule = new Map(s.rule.map((c) => [c.strategy, c]));
   const skips = s.llm.filter((c) => c.call === "skip").length;
   const reduces = s.llm.filter((c) => c.call === "reduce").length;
+  const llmOff = !s.llmError && s.llm.length === 0;
   const subject = s.llmError
     ? `Book advisor ${s.date}: LLM error / rule ${s.rule[0]?.call ?? "n/a"}`
-    : `Book advisor ${s.date}: ${skips} skip / ${reduces} reduce`;
+    : llmOff
+      ? `Book advisor ${s.date}: rule ${s.rule[0]?.call ?? "n/a"} (LLM off)`
+      : `Book advisor ${s.date}: ${skips} skip / ${reduces} reduce`;
 
   const color = (c?: string) => (c === "skip" ? "#b42318" : c === "reduce" ? "#b54708" : "#067647");
-  const rows = STRATEGY_NAMES.map((n) => {
+  const names = s.strategyNames ?? STRATEGY_NAMES;
+  const rows = names.map((n) => {
     const l = llm.get(n);
     const r = rule.get(n);
     const conf = l?.confidence != null ? ` (${Math.round(l.confidence * 100)}%)` : "";
@@ -44,7 +50,11 @@ export function buildSummaryEmail(s: SummaryInput): { subject: string; html: str
     .map((h) => `<li>${etTime(h.ts)} — ${h.url ? `<a href="${esc(h.url)}">${esc(h.headline)}</a>` : esc(h.headline)}</li>`)
     .join("\n");
 
-  const read = s.llmError ? `<p style="color:#b42318"><b>LLM call failed:</b> ${esc(s.llmError)}</p>` : `<p>${esc(s.marketRead ?? "")}</p>`;
+  const read = s.llmError
+    ? `<p style="color:#b42318"><b>LLM call failed:</b> ${esc(s.llmError)}</p>`
+    : llmOff
+      ? `<p style="color:#555">LLM call is switched off in Settings; rule call only.</p>`
+      : `<p>${esc(s.marketRead ?? "")}</p>`;
   const html = `<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:14px;max-width:640px">
 <p style="color:#555;font-size:12px;margin:0 0 8px">SHADOW MODE — advisory only, no orders are placed.</p>
 ${read}
@@ -63,7 +73,7 @@ ${s.dashboardUrl ? `<p style="font-size:12px"><a href="${esc(s.dashboardUrl)}">D
     "",
     s.llmError ? `LLM call failed: ${s.llmError}` : s.marketRead ?? "",
     "",
-    ...STRATEGY_NAMES.map((n) => `${n.padEnd(8)} LLM ${(llm.get(n)?.call ?? "-").padEnd(7)} rule ${rule.get(n)?.call ?? "-"}`),
+    ...names.map((n) => `${n.padEnd(8)} LLM ${(llm.get(n)?.call ?? "-").padEnd(7)} rule ${rule.get(n)?.call ?? "-"}`),
     "",
     "Top headlines:",
     ...s.headlines.slice(0, 5).map((h, i) => `${i + 1}. ${etTime(h.ts)} ${h.headline}`),
@@ -72,9 +82,13 @@ ${s.dashboardUrl ? `<p style="font-size:12px"><a href="${esc(s.dashboardUrl)}">D
   return { subject, html, text };
 }
 
-export async function sendEmail(msg: { subject: string; html: string; text: string }, env: NodeJS.ProcessEnv = process.env): Promise<string> {
+export async function sendEmail(
+  msg: { subject: string; html: string; text: string },
+  opts: { to?: string } = {},
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<string> {
   const key = env.RESEND_API_KEY;
-  const to = env.ALERT_EMAIL;
+  const to = opts.to?.trim() || env.ALERT_EMAIL;
   if (!key || !to) throw new Error("RESEND_API_KEY / ALERT_EMAIL are not set");
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",

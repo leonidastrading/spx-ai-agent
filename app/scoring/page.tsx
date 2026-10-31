@@ -1,3 +1,4 @@
+import SetupNotice from "@/components/SetupNotice";
 import * as store from "@/lib/db";
 import { coinFlipBaseline, scoreDecisions, withTotals, type ScoredDecision } from "@/lib/scoring";
 
@@ -9,6 +10,7 @@ const pct = (x: number | null) => (x === null ? "—" : `${Math.round(x * 100)}%
 const signed = (x: number) => <span className={x > 0 ? "pos" : x < 0 ? "neg" : ""}>{usd(x)}</span>;
 
 export default async function ScoringPage() {
+  if (!store.hasDatabase()) return <SetupNotice />;
   const [decisions, outcomes] = await Promise.all([store.allDecisions(), store.allOutcomes()]);
   const scored = decisions as ScoredDecision[];
   const rows = withTotals(scoreDecisions(scored, outcomes));
@@ -19,6 +21,16 @@ export default async function ScoringPage() {
   return (
     <>
       <h1>Scoring</h1>
+      <section className="card">
+        <h2>Export calls with P/L</h2>
+        <form className="export" method="get" action="/api/export">
+          <input type="hidden" name="type" value="calls" />
+          <label>From<input type="date" name="from" /></label>
+          <label>To<input type="date" name="to" /></label>
+          <button type="submit">Download CSV</button>
+          <span className="small muted">One row per day and strategy: both calls and reasons, the market read, 10:50 features, your P/L, and the P/L change if each call had been followed. Blank dates = all history.</span>
+        </form>
+      </section>
       <section className="card secondary small">
         <p style={{ marginTop: 0 }}>
           {decidedDays} days with calls, {outcomeDays} days with uploaded P/L. A day counts for a strategy only if it has both a call and P/L.

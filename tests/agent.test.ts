@@ -19,9 +19,11 @@ const mem = vi.hoisted(() => ({
   reads: new Map<string, any>(),
   emails: new Map<string, any>(),
   runs: [] as any[],
+  settings: null as any,
 }));
 
-vi.mock("@/lib/db", () => ({
+vi.mock("@/lib/db", async () => ({
+  loadSettings: async () => mem.settings ?? (await import("@/lib/settings")).DEFAULT_SETTINGS,
   startRun: async (action: string, minute: string | null) => (mem.runs.push({ action, minute, status: "running" }), mem.runs.length),
   finishRun: async (id: number, r: any) => Object.assign(mem.runs[id - 1], r),
   insertBars: async (bars: Bar[]) => {
@@ -73,9 +75,9 @@ vi.mock("@/lib/llm", () => ({ runLlmDecision: (...a: any[]) => llmMock.fn(...a) 
 const emailMock = vi.hoisted(() => ({ sent: [] as any[], fail: false }));
 vi.mock("@/lib/email", async (orig) => ({
   ...(await orig<typeof import("@/lib/email")>()),
-  sendEmail: async (m: any) => {
+  sendEmail: async (m: any, opts?: { to?: string }) => {
     if (emailMock.fail) throw new Error("resend down");
-    emailMock.sent.push(m);
+    emailMock.sent.push({ ...m, to: opts?.to });
     return "id";
   },
 }));
@@ -97,7 +99,8 @@ const ALL_NEWS: NewsItem[] = [
 const requests: URL[] = [];
 
 beforeEach(() => {
-  for (const v of Object.values(mem)) (Array.isArray(v) ? v.splice(0) : (v as Map<any, any>).clear());
+  for (const [k, v] of Object.entries(mem)) if (k !== "settings") (Array.isArray(v) ? v.splice(0) : (v as Map<any, any>).clear());
+  mem.settings = null;
   emailMock.sent.splice(0);
   emailMock.fail = false;
   requests.splice(0);
@@ -239,5 +242,35 @@ describe("runTick", () => {
     emailMock.fail = false;
     await runTick(at("10:52"));
     expect(emailMock.sent).toHaveLength(1);
+  });
+
+  it("uses saved settings: LLM off, custom threshold and strategies, email recipients", async () => {
+    const { DEFAULT_SETTINGS } = await import("@/lib/settings");
+    mem.settings = {
+      ...DEFAULT_SETTINGS,
+      rules: { ...DEFAULT_SETTINGS.rules, spyDownPct: 5, atrLookbackDays: 400, atrMinHistoryDays: 300 },
+      llm: { ...DEFAULT_SETTINGS.llm, enabled: false },
+      email: { enabled: true, to: "me@example.com" },
+      strategies: [{ name: "Only", entryEt: "13:00", description: "test" }],
+    };
+    const { runTick } = await import("@/lib/agent");
+    await runTick(at("10:51"));
+    expect(llmMock.fn).not.toHaveBeenCalled();
+    const rule = mem.decisions.filter((d) => d.source === "rule");
+    expect(rule.map((d) => d.strategy)).toEqual(["Only"]);
+    expect(rule[0].call).toBe("run"); // -1.3% is above the -5% threshold; 250 days < 300 needed for the ATR leg
+    expect(rule[0].reason).toMatch(/250\/300/);
+    expect(emailMock.sent).toHaveLength(1);
+    expect(emailMock.sent[0].subject).toBe("Book advisor 2024-03-11: rule run (LLM off)");
+    expect(emailMock.sent[0].to).toBe("me@example.com");
+  });
+
+  it("email switched off in settings sends nothing", async () => {
+    const { DEFAULT_SETTINGS } = await import("@/lib/settings");
+    mem.settings = { ...DEFAULT_SETTINGS, email: { enabled: false, to: "" } };
+    const { runTick } = await import("@/lib/agent");
+    await runTick(at("10:51"));
+    expect(llmMock.fn).toHaveBeenCalledTimes(1);
+    expect(emailMock.sent).toHaveLength(0);
   });
 });

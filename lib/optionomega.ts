@@ -17,10 +17,14 @@ export interface ParseReport {
   badRows: Array<{ line: number; reason: string }>;
 }
 
-export function mapStrategy(ooName: string): string | null {
+/**
+ * Exact name in `map` first (case-insensitive), then the regex fallbacks in
+ * config/strategies.ts — only if they point at a strategy in `known`.
+ */
+export function mapStrategy(ooName: string, map: Record<string, string> = OO_STRATEGY_MAP, known?: string[]): string | null {
   const key = ooName.trim().toLowerCase();
-  if (key in OO_STRATEGY_MAP) return OO_STRATEGY_MAP[key];
-  for (const [re, name] of OO_STRATEGY_PATTERNS) if (re.test(ooName)) return name;
+  if (key in map) return map[key];
+  for (const [re, name] of OO_STRATEGY_PATTERNS) if (re.test(ooName) && (!known || known.includes(name))) return name;
   return null;
 }
 
@@ -54,7 +58,7 @@ export function parseMoney(s: string): number | null {
  * Sum P/L by (Date Opened, mapped strategy). "P/L" in the OO trade log is the
  * trade's total P/L already scaled by "No. of Contracts", so it is summed as is.
  */
-export function parseTradeLog(csv: string): ParseReport {
+export function parseTradeLog(csv: string, map: Record<string, string> = OO_STRATEGY_MAP, known?: string[]): ParseReport {
   const rows = parseCsvObjects(csv);
   const agg = new Map<string, Outcome>();
   const unmapped: Record<string, number> = {};
@@ -66,7 +70,7 @@ export function parseTradeLog(csv: string): ParseReport {
     const ooName = (r["Strategy"] ?? "").trim();
     if (!date) return badRows.push({ line, reason: `bad Date Opened "${r["Date Opened"] ?? ""}"` });
     if (pl === null) return badRows.push({ line, reason: `bad P/L "${r["P/L"] ?? ""}"` });
-    const strategy = mapStrategy(ooName);
+    const strategy = mapStrategy(ooName, map, known);
     if (!strategy) {
       unmapped[ooName || "(blank)"] = (unmapped[ooName || "(blank)"] ?? 0) + 1;
       return;

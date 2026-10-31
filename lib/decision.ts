@@ -2,7 +2,7 @@
 
 import { z } from "zod";
 import { RULES } from "@/config/rules";
-import { STRATEGIES, STRATEGY_NAMES } from "@/config/strategies";
+import { STRATEGIES, STRATEGY_NAMES, type StrategyDef } from "@/config/strategies";
 import type { Features } from "./features";
 
 export type Call = "run" | "reduce" | "skip";
@@ -45,7 +45,12 @@ export interface RuleResult {
  * is more than RULES.spyDownPct below the prior close; otherwise "run".
  * `atrHistory` = prior days' atr30_bp, most recent last, today excluded.
  */
-export function ruleDecision(f: Pick<Features, "atr30_bp" | "spy_ret_prev_close_pct">, atrHistory: number[], rules = RULES): RuleResult {
+export function ruleDecision(
+  f: Pick<Features, "atr30_bp" | "spy_ret_prev_close_pct">,
+  atrHistory: number[],
+  rules = RULES,
+  names: string[] = STRATEGY_NAMES,
+): RuleResult {
   const hist = atrHistory.filter((x) => Number.isFinite(x)).slice(-rules.atrLookbackDays);
   const reasons: string[] = [];
   let atrThreshold: number | null = null;
@@ -82,7 +87,7 @@ export function ruleDecision(f: Pick<Features, "atr30_bp" | "spy_ret_prev_close_
     atrThresholdBp: atrThreshold,
     atrPctRank: atrRank,
     historyDays: hist.length,
-    calls: STRATEGY_NAMES.map((strategy) => ({ strategy, call, confidence: null, reason })),
+    calls: names.map((strategy) => ({ strategy, call, confidence: null, reason })),
   };
 }
 
@@ -107,7 +112,7 @@ export interface LlmDecision {
 }
 
 /** JSON schema for structured output (keeps the model on the exact keys). */
-export function llmJsonSchema(): Record<string, unknown> {
+export function llmJsonSchema(names: string[] = STRATEGY_NAMES): Record<string, unknown> {
   const callObj = {
     type: "object",
     additionalProperties: false,
@@ -127,8 +132,8 @@ export function llmJsonSchema(): Record<string, unknown> {
       strategies: {
         type: "object",
         additionalProperties: false,
-        required: STRATEGY_NAMES,
-        properties: Object.fromEntries(STRATEGY_NAMES.map((n) => [n, callObj])),
+        required: names,
+        properties: Object.fromEntries(names.map((n) => [n, callObj])),
       },
     },
   };
@@ -148,23 +153,25 @@ function extractJson(text: string): unknown {
  * Validate the model's text. Throws with a readable message on any problem:
  * bad JSON, wrong shape, missing or unknown strategies.
  */
-export function parseLlmOutput(text: string): LlmDecision {
+export function parseLlmOutput(text: string, names: string[] = STRATEGY_NAMES): LlmDecision {
   const parsed = llmOutputSchema.safeParse(extractJson(text));
   if (!parsed.success) throw new Error(`schema: ${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
   const got = parsed.data.strategies;
-  const missing = STRATEGY_NAMES.filter((n) => !(n in got));
-  const unknown = Object.keys(got).filter((k) => !STRATEGY_NAMES.includes(k));
+  const missing = names.filter((n) => !(n in got));
+  const unknown = Object.keys(got).filter((k) => !names.includes(k));
   if (missing.length) throw new Error(`missing strategies: ${missing.join(", ")}`);
   if (unknown.length) throw new Error(`unknown strategies: ${unknown.join(", ")}`);
   return {
     marketRead: parsed.data.market_read,
-    calls: STRATEGY_NAMES.map((n) => ({ strategy: n, ...got[n] })),
+    calls: names.map((n) => ({ strategy: n, ...got[n] })),
   };
 }
 
 export interface PromptInput {
   date: string;
   features: Features;
+  /** Defaults to config/strategies.ts. */
+  strategies?: StrategyDef[];
   headlines: Array<{ ts: string; headline: string }>;
 }
 
@@ -181,7 +188,7 @@ Answer with JSON only, no prose outside it, matching this shape:
 Use exactly the strategy names given, all of them.`;
 
 export function buildUserPrompt(p: PromptInput): string {
-  const strategies = STRATEGIES.map((s) => `- ${s.name} — entry ${s.entryEt} ET — ${s.description}`).join("\n");
+  const strategies = (p.strategies ?? STRATEGIES).map((s) => `- ${s.name} — entry ${s.entryEt} ET — ${s.description}`).join("\n");
   const feat = Object.entries(p.features)
     .filter(([k]) => !["date", "as_of", "prior_close_at", "feed"].includes(k))
     .map(([k, v]) => `${k}: ${v ?? "n/a"}`)

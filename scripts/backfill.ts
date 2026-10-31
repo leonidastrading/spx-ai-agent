@@ -10,6 +10,8 @@
  *   --feed sip|iex        force a feed (default: probe SIP, fall back to IEX)
  *   --skip-news           bars and features only (keyword/news columns will be 0)
  *   --rpm N               max Alpaca requests per minute (default 190)
+ *   --settings FILE       JSON downloaded from the Settings page (rule thresholds +
+ *                         keyword lists); default: the config/ files
  *
  * Reads ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY from the environment
  * (.env.local, .env or the shell). Writes:
@@ -28,7 +30,8 @@ import path from "node:path";
 import { parseArgs } from "node:util";
 import { SYMBOLS } from "@/config/rules";
 import { AlpacaClient, credsFromEnv, referenceHostFromEnv, type Bar, type Feed, type NewsItem } from "@/lib/alpaca";
-import { MORNING_COLUMNS, chunkBounds, monthChunks, morningRows, regularSessionOnly, type MonthChunk } from "@/lib/backfill";
+import { chunkBounds, monthChunks, morningColumns, morningRows, regularSessionOnly, type MonthChunk } from "@/lib/backfill";
+import { DEFAULT_SETTINGS, validateSettings, type Settings } from "@/lib/settings";
 import { csvLine, parseCsv } from "@/lib/csv";
 import { addDays, etToUtc, priorSession, toEt, type Session } from "@/lib/time";
 
@@ -40,6 +43,7 @@ const { values: args } = parseArgs({
     feed: { type: "string" },
     "skip-news": { type: "boolean", default: false },
     rpm: { type: "string", default: "190" },
+    settings: { type: "string" },
   },
 });
 
@@ -56,6 +60,13 @@ if (!DATE_RE.test(TO) || TO < FROM) fail("--to must be YYYY-MM-DD and >= --from"
 if (TO >= toEt(new Date()).date) fail("--to must be before today (ET): today's session has not settled");
 if (args.feed && args.feed !== "sip" && args.feed !== "iex") fail("--feed must be sip or iex");
 if (!process.env.ALPACA_API_KEY_ID || !process.env.ALPACA_API_SECRET_KEY) fail("ALPACA_API_KEY_ID / ALPACA_API_SECRET_KEY are not set");
+
+let cfg: Settings = DEFAULT_SETTINGS;
+if (args.settings) {
+  const v = validateSettings(JSON.parse(readFileSync(args.settings, "utf8")));
+  if (!v.ok) fail(`--settings: ${v.errors.join("; ")}`);
+  cfg = v.settings;
+}
 
 const OUT = args.out!;
 const CACHE = path.join(OUT, ".cache");
@@ -177,7 +188,8 @@ async function main() {
 
   // 4) morning features, month by month with the previous month kept for prior closes/overnight news
   const out = createWriteStream(path.join(OUT, "morning_features.csv"));
-  out.write(csvLine(MORNING_COLUMNS));
+  const columns = morningColumns(cfg.keywords);
+  out.write(csvLine(columns));
   const atrHistory: number[] = [];
   let prev: MonthChunk | null = null;
   let rows = 0;
@@ -186,8 +198,8 @@ async function main() {
     const keys = prev ? [prev.key, c.key] : [c.key];
     const bars = keys.flatMap((k) => SYMBOLS.flatMap((sym) => readBars(sym, k)));
     const news = args["skip-news"] ? [] : keys.flatMap((k) => readNews(k));
-    for (const r of morningRows({ sessions: monthSessions, allSessions, bars, news, feed, atrHistory })) {
-      out.write(csvLine(MORNING_COLUMNS.map((col) => (r as unknown as Record<string, unknown>)[col])));
+    for (const r of morningRows({ sessions: monthSessions, allSessions, bars, news, feed, atrHistory, keywords: cfg.keywords, rules: cfg.rules })) {
+      out.write(csvLine(columns.map((col) => (r as unknown as Record<string, unknown>)[col])));
       rows++;
     }
     prev = c;

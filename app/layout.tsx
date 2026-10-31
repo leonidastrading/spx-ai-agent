@@ -16,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/dashboard">Dashboard</Link>
           <Link href="/scoring">Scoring</Link>
           <Link href="/upload">Upload P/L</Link>
+          <Link href="/settings">Settings</Link>
           <span className="shadow">Shadow mode · never places orders</span>
         </nav>
         <main>{children}</main>

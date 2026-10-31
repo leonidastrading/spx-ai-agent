@@ -4,7 +4,7 @@
  * any order endpoint (see lib/alpaca.ts).
  */
 
-import { RULES, SCHEDULE, SYMBOLS, LLM } from "@/config/rules";
+import { SCHEDULE, SYMBOLS } from "@/config/rules";
 import { AlpacaClient, credsFromEnv, referenceHostFromEnv, type Feed } from "./alpaca";
 import * as store from "./db";
 import { ruleDecision, buildUserPrompt, type StrategyCall } from "./decision";
@@ -12,6 +12,7 @@ import { buildSummaryEmail, sendEmail } from "./email";
 import { computeFeatures, newsWindow } from "./features";
 import { runLlmDecision } from "./llm";
 import { topHeadlines } from "./news";
+import { effectiveModel, strategyNames, type Settings } from "./settings";
 import { addDays, cronGate, etToUtc, hhmmToMinutes, minutesToHhmm, priorSession, sessionOn, toEt, type Session } from "./time";
 
 export interface TickResult {
@@ -60,6 +61,7 @@ export async function runTick(now = new Date()): Promise<TickResult> {
       feedCache = { date: session.date, feed: await alpaca.resolveFeed({ forced: process.env.ALPACA_FEED }) };
     }
     feed = feedCache.feed;
+    const cfg = await store.loadSettings();
 
     const decisionMin = hhmmToMinutes(SCHEDULE.decisionAt);
     // Ingest through the current minute, but never past the decision time.
@@ -67,14 +69,14 @@ export async function runTick(now = new Date()): Promise<TickResult> {
     const asOf = etToUtc(session.date, minutesToHhmm(asOfMin));
 
     Object.assign(rows, await ingest(alpaca, feed, prior, asOf));
-    await computeAndStoreFeatures(session, prior, asOf, feed, minutesToHhmm(asOfMin));
+    await computeAndStoreFeatures(session, prior, asOf, feed, minutesToHhmm(asOfMin), cfg);
     rows.features = 1;
 
     if (et.minutes >= decisionMin) {
-      Object.assign(rows, await decide(alpaca, feed, session, prior, et.minutes, notes));
+      Object.assign(rows, await decide(alpaca, feed, session, prior, et.minutes, notes, cfg));
     }
     if (et.minutes >= hhmmToMinutes(SCHEDULE.emailAt)) {
-      rows.email = await maybeEmail(session.date, prior, notes);
+      rows.email = await maybeEmail(session.date, prior, notes, cfg);
     }
 
     await store.finishRun(runId, { status: "ok", feed, rowsWritten: rows, detail: notes.join("; ") || undefined });
@@ -111,11 +113,11 @@ async function ingest(alpaca: AlpacaClient, feed: Feed, prior: Session, end: Dat
   return { bars, news };
 }
 
-async function computeAndStoreFeatures(session: Session, prior: Session, asOf: Date, feed: Feed, hhmm: string) {
+async function computeAndStoreFeatures(session: Session, prior: Session, asOf: Date, feed: Feed, hhmm: string, cfg: Settings) {
   const priorCloseUtc = etToUtc(prior.date, prior.close);
   const bars = await store.loadBars(new Date(priorCloseUtc.getTime() - 5 * 60000), asOf);
   const news = await store.loadNews(priorCloseUtc, asOf);
-  const features = computeFeatures({ session, prior, asOf, bars, news, feed });
+  const features = computeFeatures({ session, prior, asOf, bars, news, feed, keywords: cfg.keywords });
   await store.upsertFeatures(session.date, hhmm, features);
   return { features, news };
 }
@@ -127,10 +129,12 @@ async function decide(
   prior: Session,
   etMinutes: number,
   notes: string[],
+  cfg: Settings,
 ): Promise<Record<string, number>> {
   const out: Record<string, number> = {};
   const haveRule = await store.hasDecision(session.date, "rule");
-  const haveLlm = await store.hasDecision(session.date, "llm");
+  // With the LLM switched off in Settings, only the rule call is made.
+  const haveLlm = !cfg.llm.enabled || (await store.hasDecision(session.date, "llm"));
   if (haveRule && haveLlm) return out;
 
   const asOf = etToUtc(session.date, SCHEDULE.decisionAt);
@@ -143,22 +147,22 @@ async function decide(
     Object.assign(out, await ingest(alpaca, feed, prior, asOf));
   }
 
-  const { features, news } = await computeAndStoreFeatures(session, prior, asOf, feed, SCHEDULE.decisionAt);
+  const { features, news } = await computeAndStoreFeatures(session, prior, asOf, feed, SCHEDULE.decisionAt, cfg);
   await store.upsertMorningHistory(session.date, features.atr30_bp, features.spy_ret_prev_close_pct, "live");
 
   if (!haveRule) {
-    const hist = await store.atrHistory(session.date, RULES.atrLookbackDays);
-    const rule = ruleDecision(features, hist);
+    const hist = await store.atrHistory(session.date, cfg.rules.atrLookbackDays);
+    const rule = ruleDecision(features, hist, cfg.rules, strategyNames(cfg));
     out.rule_decisions = await store.insertDecisions(session.date, "rule", rule.calls);
     notes.push(`rule: ${rule.call}`);
   }
 
   if (!haveLlm) {
-    const headlines = topHeadlines(newsWindow(news, prior, asOf), LLM.maxHeadlines).map((h) => ({ ts: h.ts, headline: h.headline }));
-    const promptInput = { date: session.date, features, headlines };
+    const headlines = topHeadlines(newsWindow(news, prior, asOf), cfg.llm.maxHeadlines, cfg.keywords).map((h) => ({ ts: h.ts, headline: h.headline }));
+    const promptInput = { date: session.date, features, headlines, strategies: cfg.strategies };
     const lastChance = etMinutes >= hhmmToMinutes(SCHEDULE.catchUpUntil) - 1;
     try {
-      const res = await runLlmDecision(promptInput);
+      const res = await runLlmDecision(promptInput, { model: effectiveModel(cfg), effort: cfg.llm.effort });
       if (res.decision) {
         out.llm_decisions = await store.insertDecisions(session.date, "llm", res.decision.calls);
         await store.insertLlmRead(session.date, res.model, res.decision.marketRead, buildUserPrompt(promptInput), res.attempts);
@@ -185,11 +189,12 @@ function summarize(calls: StrategyCall[]): string {
   return `${n("skip")} skip / ${n("reduce")} reduce / ${n("run")} run`;
 }
 
-async function maybeEmail(date: string, prior: Session, notes: string[]): Promise<number> {
+async function maybeEmail(date: string, prior: Session, notes: string[], cfg: Settings): Promise<number> {
+  if (!cfg.email.enabled) return 0;
   const decisions = await store.decisionsForDate(date);
   const llm = decisions.filter((d) => d.source === "llm");
   const rule = decisions.filter((d) => d.source === "rule");
-  if (!llm.length || !rule.length) return 0;
+  if (!rule.length || (cfg.llm.enabled && !llm.length)) return 0;
 
   const read = await store.llmRead(date);
   const llmErr = llm.find((d) => d.call === "error");
@@ -203,13 +208,14 @@ async function maybeEmail(date: string, prior: Session, notes: string[]): Promis
     llmError: llmErr ? llmErr.reason : null,
     llm: llm.filter((d) => d.call !== "error") as StrategyCall[],
     rule: rule as StrategyCall[],
-    headlines: topHeadlines(news, 5),
+    headlines: topHeadlines(news, 5, cfg.keywords),
+    strategyNames: strategyNames(cfg),
     dashboardUrl: appUrl ? `${appUrl}/dashboard` : undefined,
   });
 
   if (!(await store.claimEmail(date, msg.subject))) return 0;
   try {
-    const id = await sendEmail(msg);
+    const id = await sendEmail(msg, { to: cfg.email.to });
     await store.setEmailProviderId(date, id);
     notes.push(`email sent: ${msg.subject}`);
     return 1;

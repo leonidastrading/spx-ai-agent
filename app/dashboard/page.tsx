@@ -1,5 +1,5 @@
 import LineChart from "@/components/LineChart";
-import { STRATEGY_NAMES } from "@/config/strategies";
+import SetupNotice from "@/components/SetupNotice";
 import { SCHEDULE } from "@/config/rules";
 import * as store from "@/lib/db";
 import { categorize, topHeadlines } from "@/lib/news";
@@ -34,8 +34,10 @@ function CallCell({ call, confidence }: { call?: string; confidence?: number | n
 export default async function Dashboard({ searchParams }: { searchParams: Promise<{ date?: string }> }) {
   const sp = await searchParams;
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? sp.date! : toEt(new Date()).date;
+  if (!store.hasDatabase()) return <SetupNotice />;
 
-  const [featureRows, decisions, read, history, runs] = await Promise.all([
+  const [cfg, featureRows, decisions, read, history, runs] = await Promise.all([
+    store.loadSettings(),
     store.featuresForDate(date),
     store.decisionsForDate(date),
     store.llmRead(date),
@@ -44,7 +46,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   ]);
   const latest = featureRows.length ? featureRows[featureRows.length - 1].data : null;
   const news = latest ? await store.loadNews(new Date(latest.prior_close_at), new Date(latest.as_of)) : [];
-  const top = topHeadlines(news, 30);
+  const top = topHeadlines(news, 30, cfg.keywords);
+  const STRATEGY_NAMES = cfg.strategies.map((s) => s.name);
 
   const llm = new Map(decisions.filter((d) => d.source === "llm").map((d) => [d.strategy, d]));
   const rule = new Map(decisions.filter((d) => d.source === "rule").map((d) => [d.strategy, d]));
@@ -67,6 +70,10 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         <input type="date" name="date" defaultValue={date} aria-label="Date" />
         <button type="submit">Go</button>
         {latest && <span className="muted small">features as of {etHhmm(latest.as_of)} ET · feed {latest.feed} · {latest.bars_used} SPY bars</span>}
+        <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+          <a className="button" href={`/api/export?type=features&date=${date}`}>Day's features CSV</a>
+          <a className="button" href="/api/export?type=calls">All calls CSV</a>
+        </span>
       </form>
 
       <section className="card">
@@ -138,7 +145,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <li key={h.id}>
               <time>{etHhmm(h.ts)}</time>
               {h.url ? <a href={h.url} target="_blank" rel="noreferrer">{h.headline}</a> : h.headline}
-              {categorize(h).map((c) => <span key={c} className="tag">{c}</span>)}
+              {categorize(h, cfg.keywords).map((c) => <span key={c} className="tag">{c}</span>)}
             </li>
           ))}
           {top.length === 0 && <li className="muted">none</li>}

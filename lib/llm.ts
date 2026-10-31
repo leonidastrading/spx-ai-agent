@@ -38,10 +38,14 @@ function responseText(resp: { content: Array<{ type: string }>; stop_reason: str
  * (feeding the error back). Returns decision=null after two failures; the
  * caller stores an error row. API errors (auth, 5xx after SDK retries) throw.
  */
-export async function runLlmDecision(input: PromptInput, opts: { client?: Anthropic; model?: string } = {}): Promise<LlmRunResult> {
+export async function runLlmDecision(
+  input: PromptInput,
+  opts: { client?: Anthropic; model?: string; effort?: "low" | "medium" | "high" | "xhigh" | "max" } = {},
+): Promise<LlmRunResult> {
   const client = opts.client ?? new Anthropic(); // reads ANTHROPIC_API_KEY from env
   const model = opts.model ?? modelFromEnv();
   const useFallbacks = FALLBACK_MODELS.has(model);
+  const names = input.strategies?.map((s) => s.name);
   const prompt = buildUserPrompt(input);
   let messages: Anthropic.Beta.BetaMessageParam[] = [{ role: "user", content: prompt }];
   const attempts: LlmAttempt[] = [];
@@ -52,13 +56,13 @@ export async function runLlmDecision(input: PromptInput, opts: { client?: Anthro
       max_tokens: 16000,
       system: SYSTEM_PROMPT,
       messages,
-      output_config: { effort: "high", format: { type: "json_schema", schema: llmJsonSchema() } },
+      output_config: { effort: opts.effort ?? "high", format: { type: "json_schema", schema: llmJsonSchema(names) } },
       ...(useFallbacks ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
     });
     let text = "";
     try {
       text = responseText(resp);
-      const decision = parseLlmOutput(text);
+      const decision = parseLlmOutput(text, names);
       attempts.push({ ok: true, text });
       return { model, decision, attempts };
     } catch (err) {

@@ -48,7 +48,7 @@ export default function UploadForm() {
               </p>
               {Object.keys(result.unmapped).length > 0 && (
                 <>
-                  <p className="call-reduce">Unmapped Option Omega strategy names (skipped). Add them to OO_STRATEGY_MAP in config/strategies.ts:</p>
+                  <p className="call-reduce">Unmapped Option Omega strategy names (skipped). Add them under <a href="/settings">Settings → Option Omega name mapping</a> and upload again:</p>
                   <ul>{Object.entries(result.unmapped).map(([k, v]) => <li key={k}><code>{k}</code> — {v} rows</li>)}</ul>
                 </>
               )}

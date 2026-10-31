@@ -1,11 +1,10 @@
 /** Pure helpers for scripts/backfill.ts (chunking and the per-day feature loop). */
 
 import { RULES, SCHEDULE } from "@/config/rules";
-import { KEYWORD_CATEGORIES } from "@/config/keywords";
 import type { Bar, Feed } from "./alpaca";
 import { ruleDecision } from "./decision";
 import { FEATURE_COLUMNS, computeFeatures, type Features } from "./features";
-import type { Headline } from "./news";
+import { DEFAULT_KEYWORDS, type Headline, type KeywordConfig } from "./news";
 import { addDays, etToUtc, isEarlyClose, priorSession, type Session } from "./time";
 
 export interface MonthChunk {
@@ -51,14 +50,11 @@ export function regularSessionOnly(bars: Bar[], sessions: Session[]): Bar[] {
   });
 }
 
-export const MORNING_COLUMNS: string[] = [
-  ...FEATURE_COLUMNS,
-  ...KEYWORD_CATEGORIES.map((c) => `kw_${c.key}`),
-  "early_close",
-  "atr30_pct_rank",
-  "atr30_history_days",
-  "rule_call",
-];
+export function morningColumns(kc: KeywordConfig = DEFAULT_KEYWORDS): string[] {
+  return [...FEATURE_COLUMNS, ...kc.categories.map((c) => `kw_${c.key}`), "early_close", "atr30_pct_rank", "atr30_history_days", "rule_call"];
+}
+
+export const MORNING_COLUMNS: string[] = morningColumns();
 
 export type MorningRow = Features & {
   early_close: boolean;
@@ -79,7 +75,10 @@ export function morningRows(args: {
   news: Headline[];
   feed: Feed;
   atrHistory: number[];
+  keywords?: KeywordConfig;
+  rules?: typeof RULES;
 }): MorningRow[] {
+  const rules = args.rules ?? RULES;
   const out: MorningRow[] = [];
   // Regular-session bars always share the UTC date with their ET session date.
   const byDate = new Map<string, Bar[]>();
@@ -103,8 +102,9 @@ export function morningRows(args: {
       bars: [...(byDate.get(prior.date) ?? []), ...(byDate.get(session.date) ?? [])],
       news: news.slice(lowerBound(news, from), lowerBound(news, to)),
       feed: args.feed,
+      keywords: args.keywords,
     });
-    const rule = ruleDecision(f, args.atrHistory);
+    const rule = ruleDecision(f, args.atrHistory, rules);
     out.push({
       ...f,
       early_close: isEarlyClose(session),
@@ -114,7 +114,7 @@ export function morningRows(args: {
     });
     if (f.atr30_bp !== null) {
       args.atrHistory.push(f.atr30_bp);
-      if (args.atrHistory.length > RULES.atrLookbackDays) args.atrHistory.shift();
+      if (args.atrHistory.length > rules.atrLookbackDays) args.atrHistory.shift();
     }
   }
   return out;

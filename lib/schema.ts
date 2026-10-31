@@ -1,4 +1,8 @@
--- Morning book advisor schema. Idempotent: safe to run repeatedly.
+/**
+ * Database schema. Idempotent (CREATE ... IF NOT EXISTS): applied automatically
+ * on first use by lib/db.ts, and by `npx tsx scripts/migrate.ts`.
+ */
+export const SCHEMA_SQL = `-- Morning book advisor schema. Idempotent: safe to run repeatedly.
 
 CREATE TABLE IF NOT EXISTS bars (
   symbol text NOT NULL,
@@ -91,3 +95,18 @@ CREATE TABLE IF NOT EXISTS runs (
   error text
 );
 CREATE INDEX IF NOT EXISTS runs_started_idx ON runs (started_at DESC);
+
+-- Editable inputs from the Settings page (one row, key 'app'). Defaults live in config/.
+CREATE TABLE IF NOT EXISTS settings (
+  key text PRIMARY KEY,
+  value jsonb NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+`;
+
+/** Split into single statements (the HTTP driver runs one statement per query). */
+export function schemaStatements(): string[] {
+  return SCHEMA_SQL.split(/;\s*$/m)
+    .map((s) => s.replace(/--.*$/gm, "").trim())
+    .filter(Boolean);
+}

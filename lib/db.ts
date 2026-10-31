@@ -5,6 +5,8 @@ import type { Bar, NewsItem } from "./alpaca";
 import type { StrategyCall } from "./decision";
 import type { Features } from "./features";
 import type { Outcome } from "./optionomega";
+import { schemaStatements } from "./schema";
+import { mergeSettings, type Settings } from "./settings";
 
 let cached: NeonQueryFunction<false, false> | null = null;
 
@@ -17,8 +19,30 @@ export function db(): NeonQueryFunction<false, false> {
   return cached;
 }
 
+export function hasDatabase(): boolean {
+  return !!(process.env.DATABASE_URL ?? process.env.POSTGRES_URL);
+}
+
+let schemaReady: Promise<void> | null = null;
+
+/** Create tables on first use (idempotent), once per server instance. */
+function ensureSchema(): Promise<void> {
+  if (!schemaReady) {
+    schemaReady = (async () => {
+      for (const st of schemaStatements()) await db().query(st);
+    })().catch((err) => {
+      schemaReady = null;
+      throw err;
+    });
+  }
+  return schemaReady;
+}
+
 type Row = Record<string, any>;
-const q = (text: string, params: unknown[] = []) => db().query(text, params) as Promise<Row[]>;
+const q = async (text: string, params: unknown[] = []) => {
+  await ensureSchema();
+  return (await db().query(text, params)) as Row[];
+};
 
 const CHUNK = 2000;
 
@@ -201,4 +225,49 @@ export async function lastSuccessfulRun(): Promise<{ started_at: string; finishe
 
 export async function recentRuns(limit = 20): Promise<Row[]> {
   return q(`SELECT id, started_at, finished_at, minute_et, action, status, feed, rows_written, detail, error FROM runs ORDER BY id DESC LIMIT $1`, [limit]);
+}
+
+// --------------------------------------------------------------- settings
+
+export async function loadSettings(): Promise<Settings> {
+  const rows = await q(`SELECT value FROM settings WHERE key = 'app'`);
+  return mergeSettings(rows[0]?.value);
+}
+
+export async function saveSettings(s: Settings): Promise<void> {
+  await q(
+    `INSERT INTO settings (key, value, updated_at) VALUES ('app', $1, now())
+     ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`,
+    [JSON.stringify(s)],
+  );
+}
+
+export async function resetSettings(): Promise<void> {
+  await q(`DELETE FROM settings WHERE key = 'app'`);
+}
+
+export async function settingsUpdatedAt(): Promise<string | null> {
+  const rows = await q(`SELECT updated_at FROM settings WHERE key = 'app'`);
+  return rows[0]?.updated_at ? new Date(rows[0].updated_at).toISOString() : null;
+}
+
+// ----------------------------------------------------------------- export
+
+export async function exportRows(from: string, to: string) {
+  const [decisions, reads, features, outcomes] = await Promise.all([
+    q(
+      `SELECT to_char(date, 'YYYY-MM-DD') AS date, strategy, source, call, confidence, reason, created_at
+       FROM decisions WHERE date BETWEEN $1 AND $2 ORDER BY date, strategy, source`,
+      [from, to],
+    ),
+    q(`SELECT to_char(date, 'YYYY-MM-DD') AS date, model, market_read FROM llm_reads WHERE date BETWEEN $1 AND $2`, [from, to]),
+    q(`SELECT to_char(date, 'YYYY-MM-DD') AS date, minute_et, data FROM features WHERE date BETWEEN $1 AND $2 AND minute_et = $3`, [from, to, "10:50"]),
+    q(`SELECT to_char(date, 'YYYY-MM-DD') AS date, strategy, pl, trades FROM outcomes WHERE date BETWEEN $1 AND $2`, [from, to]),
+  ]);
+  return {
+    decisions: decisions as Array<{ date: string; strategy: string; source: string; call: string; confidence: number | null; reason: string; created_at: string }>,
+    reads: reads as Array<{ date: string; model: string; market_read: string | null }>,
+    features: features as Array<{ date: string; data: Features }>,
+    outcomes: outcomes.map((o) => ({ date: o.date as string, strategy: o.strategy as string, pl: Number(o.pl), trades: Number(o.trades) })),
+  };
 }

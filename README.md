@@ -79,12 +79,15 @@ downgrade/guidance/miss (only when a headline concerns AAPL MSFT NVDA AMZN GOOGL
   error row is stored. Prompt and raw responses are saved in `llm_reads`. For models that support it, the
   request enables Anthropic's server-side refusal fallback (`fallbacks: "default"`).
 
-Strategy names, entry times and descriptions are in `config/strategies.ts`.
+Strategy names, entry times and descriptions default to `config/strategies.ts`. Like the thresholds, keywords
+and model, you can change them on the Settings page.
 
 ## Pages
 
-All pages and `/api/upload` sit behind HTTP basic auth (`DASHBOARD_USER` / `DASHBOARD_PASSWORD`, enforced in
-`proxy.ts` and again in the upload handler). If either variable is unset, access is refused.
+All pages and APIs except `/api/health` and the cron sit behind HTTP basic auth (`DASHBOARD_USER` /
+`DASHBOARD_PASSWORD`). `proxy.ts` enforces it, and the upload, export and settings handlers check again. If
+either variable is unset, access is refused. Until a database is connected, the pages show a setup checklist
+instead of data.
 
 - `/dashboard` (`?date=YYYY-MM-DD`): feature charts for the day, the headlines, both calls with reasons, a history
   table of past calls (LLM / rule) and recent cron runs.
@@ -100,6 +103,25 @@ All pages and `/api/upload` sit behind HTTP basic auth (`DASHBOARD_USER` / `DASH
 
   A coin-flip baseline places the same number of skip and reduce days at random (2,000 seeded draws). It shows
   the random net's mean, 5th and 95th percentiles, and the share of draws that matched or beat the actual net.
+- `/settings`: every input in one place.
+  - **Connections & keys:** whether each env var is set. Values are never shown.
+  - **Rule thresholds:** ATR percentile, lookback, minimum history, SPY down %.
+  - **LLM:** on/off, model, effort, number of headlines sent.
+  - **Email:** on/off, recipients.
+  - **Strategies:** names, entry times, descriptions.
+  - **Option Omega name mapping.**
+  - **Keyword categories and mega-cap lists.**
+
+  Settings are validated, saved in the `settings` table, and take effect on the next cron minute. The config
+  files are the defaults, and "Reset to defaults" restores them. "Download JSON" exports the settings for the
+  backfill's `--settings` option. The schedule stays fixed in `vercel.json`.
+- **CSV export**, from the dashboard and scoring pages:
+  - `/api/export?type=calls&from=&to=`: one row per day and strategy. It has the LLM call, confidence and
+    reason, the rule call and reason, your P/L, `llm_effect`/`rule_effect` (the P/L change if the call had been
+    followed), the model and market read, the 10:50 features and the keyword counts.
+  - `/api/export?type=features&date=`: every stored minute of one day.
+
+  Free text is guarded against spreadsheet formula injection.
 - `/api/health` (no auth): `{ last_successful_run, last_minute_et, ... }`.
 
 ## Setup
@@ -129,7 +151,8 @@ Fill in `.env.local` (never commit it; `.env*` is git-ignored except `.env.examp
 | `CRON_SECRET` | yes | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route |
 | `APP_URL` | no | used for the dashboard link in the email (defaults to the Vercel production URL) |
 
-Create the tables (idempotent):
+Tables are created automatically the first time the app touches the database. To create them up front
+instead (idempotent):
 
 ```bash
 npx tsx scripts/migrate.ts
@@ -157,7 +180,8 @@ npm run typecheck
 
 ## Deploy (Vercel)
 
-1. Create a Postgres database (Vercel Marketplace → Neon, or Neon directly). Run the migration against it.
+1. Create a Postgres database: Vercel project → Storage → Create Database → Neon, connected to this project. That
+   sets `DATABASE_URL`. Tables are created on first use.
 2. Import the repo into Vercel (Pro plan, for the per-minute cron).
 3. Add every variable from the table above under Project → Settings → Environment Variables (Production).
 4. Deploy. Vercel registers the three cron entries in `vercel.json`. Check them under Project → Settings → Cron
@@ -178,7 +202,9 @@ npx tsx scripts/backfill.ts --from 2016-01-01 --to 2026-10-30
 ```
 
 (The scripts read `.env.local` / `.env` themselves; variables already in your shell take precedence. `--to`
-defaults to yesterday, ET.) Options: `--out DIR` (default `data`), `--feed sip|iex`, `--skip-news`, `--rpm N`.
+defaults to yesterday, ET.) Options: `--out DIR` (default `data`), `--feed sip|iex`, `--skip-news`, `--rpm N`, `--settings FILE`. The
+last takes a JSON file downloaded from the Settings page, so the backfill uses the same thresholds and keyword
+lists as the live app.
 
 - The script pulls SPY/QQQ/IWM/TLT/VIXY 1-minute bars and all news headlines, month by month. It throttles to
   `--rpm` requests a minute and retries 429s (honouring `retry-after` / `x-ratelimit-reset`) and 5xx errors with
@@ -201,9 +227,12 @@ defaults to yesterday, ET.) Options: `--out DIR` (default `data`), `--feed sip|i
 ## Code layout
 
 ```
-config/keywords.ts     keyword categories (edit here)
-config/strategies.ts   strategies + Option Omega name mapping
-config/rules.ts        symbols, thresholds, schedule, default model
+config/keywords.ts     default keyword categories     (overridable on /settings)
+config/strategies.ts   default strategies + OO mapping (overridable on /settings)
+config/rules.ts        symbols, default thresholds, schedule, default model
+lib/settings.ts        settings schema, defaults, validation, env status  (pure)
+lib/export.ts          CSV exports                                        (pure)
+lib/schema.ts          database schema (auto-applied)
 lib/time.ts            ET/DST conversion, calendar helpers, cron gate        (pure)
 lib/alpaca.ts          read-only Alpaca client + response parsing            (GET-only, allowlisted)
 lib/features.ts        feature computation                                   (pure)
@@ -213,7 +242,7 @@ lib/scoring.ts         scoring + coin-flip baseline                          (pu
 lib/optionomega.ts     trade-log parsing                                     (pure)
 lib/backfill.ts        backfill chunking + per-day feature loop              (pure)
 lib/llm.ts, email.ts   Anthropic and Resend calls
-lib/db.ts              Postgres access
+lib/db.ts              Postgres access, settings storage
 lib/agent.ts           one cron tick (ingest → features → decide → email), logged to `runs`
 scripts/               backfill.ts, migrate.ts, seed-history.ts
 tests/                 vitest on fixed sample data (DST transitions, early closes, a simulated morning)

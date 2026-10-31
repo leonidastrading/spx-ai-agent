@@ -8,7 +8,7 @@
 
 import { SCHEDULE } from "@/config/rules";
 import type { Bar, Feed } from "./alpaca";
-import { keywordCounts, type Headline } from "./news";
+import { DEFAULT_KEYWORDS, keywordCounts, type Headline, type KeywordConfig } from "./news";
 import { etToUtc, type Session } from "./time";
 
 export interface FeatureInput {
@@ -21,6 +21,8 @@ export interface FeatureInput {
   /** Headlines, any time; filtered here to [prior close, asOf). */
   news: Headline[];
   feed: Feed;
+  /** Keyword lists; defaults to config/keywords.ts. */
+  keywords?: KeywordConfig;
 }
 
 export interface Features {
@@ -188,7 +190,7 @@ export function computeFeatures(input: FeatureInput): Features {
     vixy_ret_pct: round(symbolReturn(bars, "VIXY", input)),
     news_since_prior_close: overnight.length,
     news_since_open: sinceOpen.length,
-    ...keywordCounts(overnight),
+    ...keywordCounts(overnight, input.keywords ?? DEFAULT_KEYWORDS),
   };
 }
 
