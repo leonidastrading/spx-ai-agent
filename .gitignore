@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# secrets — never commit
+.env*
+!.env.example
+
+# backfill output (large; regenerate with scripts/backfill.ts)
+data/*
+!data/.gitkeep
+
+.vercel

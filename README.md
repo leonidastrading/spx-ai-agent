@@ -1,0 +1,220 @@
+# Morning book advisor (shadow mode)
+
+A Next.js (App Router, TypeScript) app on Vercel. It watches the US market from 09:30 to 10:50 ET each trading
+day, then logs a **run / reduce / skip** call for each SPX options strategy that enters later in the day. It makes
+two calls: a mechanical rule baseline and an LLM call. At 10:51 ET it emails a one-screen summary. A scoring page
+measures both sources against your Option Omega P/L.
+
+## This app never trades
+
+**SHADOW MODE ONLY. The app never places, modifies or cancels orders.** It has no code that can.
+
+- All Alpaca HTTP goes through one function (`AlpacaClient.get` in `lib/alpaca.ts`). That function only issues
+  `GET` and checks every host+path against a fixed allowlist before any request is sent:
+
+  | Host | Endpoint | Used for |
+  |---|---|---|
+  | `data.alpaca.markets` | `GET /v2/stocks/bars` | 1-minute bars (SPY, QQQ, IWM, TLT, VIXY), feed probe |
+  | `data.alpaca.markets` | `GET /v1beta1/news` | Benzinga headlines (`include_content=false`, `sort=asc`, paged with `page_token`) |
+  | `api.alpaca.markets` (or `paper-api.alpaca.markets` with `ALPACA_PAPER=true`) | `GET /v2/calendar` | trading days, early closes |
+  | same | `GET /v2/clock` | read-only clock (available, not needed by the cron) |
+
+- Any other endpoint (`/v2/orders`, `/v2/positions`, `/v2/account`, …) throws before a request is made. So
+  does any other host.
+- `tests/alpaca.test.ts` tests the allowlist. It also scans every source file and fails if one mentions an
+  order/position/account endpoint or makes a non-GET call to an Alpaca host.
+
+The only other outbound calls are to the Anthropic API (once a day, at 10:50 ET) and to Resend (one email a day).
+
+## How it works
+
+| Time (ET) | What happens |
+|---|---|
+| 09:30–10:50, every minute | Fetch new 1-minute bars and headlines since the newest stored row. Store them (idempotent). Compute and store a `features` row. |
+| 10:50 | Final features (bars that closed before 10:50 and headlines before 10:50). Rule call and LLM call, both stored in `decisions`. |
+| 10:51 | Email: the LLM's market read, a table of strategy / LLM call / rule call, and the top 5 headlines. |
+| 10:51–11:05 | Catch-up only. If the 10:50 run was missed or failed, the decision and email run late, still before the 11:11 "Short" entry. No more data is ingested. |
+
+**Cron.** `vercel.json` schedules `/api/cron/tick` every minute from 13:30 to 16:00 UTC, Mon–Fri. Vercel cron
+runs in UTC, and that window covers both EDT (09:30 ET = 13:30 UTC) and EST (09:30 ET = 14:30 UTC). Each run
+converts the time to America/New_York and checks the Alpaca calendar. Outside a trading day or the window it logs
+a `skipped` run and exits. **Per-minute cron needs a Vercel Pro (or higher) plan**: Hobby crons run at most once
+a day.
+
+**Idempotency.** Bars are keyed `(symbol, ts)`, headlines by Alpaca id, and features by `(date, minute)`. Inserts
+use `ON CONFLICT DO NOTHING`, so re-running a minute duplicates nothing. Decisions are keyed
+`(date, strategy, source)` and the email by date: a second run neither re-decides nor re-sends.
+
+**Feed.** If `ALPACA_FEED` is set, it is used. Otherwise each day starts by probing SIP and falling back to IEX
+when the subscription refuses (403). The feed is stored on every bar, every features row and every run.
+
+### Features (per minute; `lib/features.ts`)
+
+All prices are SPY (SPX isn't on Alpaca). "Prior close" is the close of the last regular-session 1-minute bar of
+the prior session: 15:59 ET, or 12:59 ET after an early close. Features "as of T" use only bars that started
+before T, and headlines created in [prior session close, T).
+
+`spy_ret_prev_close_pct`, `spy_ret_open_pct`, `gap_pct`, `spy_high`/`spy_low`, `range_bp` (bp of the open),
+`atr30_bp` (mean 1-min true range over 09:30–09:59, bp of the open; uses fewer bars before 10:00), `range_pos`
+(0 = day's low, 1 = day's high), `new_highs`/`new_lows` (bars that set a new running extreme),
+`qqq_minus_spy_pct` and `iwm_minus_spy_pct` (return from the prior close minus SPY's), `tlt_ret_pct`,
+`vixy_ret_pct`, `news_since_prior_close`, `news_since_open`, and the `kw_*` keyword-category counts.
+
+Keyword lists live in **`config/keywords.ts`**, one editable file read by both the cron and the backfill. The
+categories are fed/fomc/powell, cpi/ppi/jobs/payrolls, tariff/trade, war/attack/geopolitical,
+downgrade/guidance/miss (only when a headline concerns AAPL MSFT NVDA AMZN GOOGL META TSLA) and halt/outage.
+
+### The two calls
+
+- **Rule** (`lib/decision.ts`, thresholds in `config/rules.ts`): `reduce` if today's `atr30_bp` is at or above
+  the 90th percentile of the trailing 250 days, OR SPY is more than 1% below the prior close at 10:50. Otherwise
+  `run`. The ATR leg needs at least 60 days in `morning_history`. Seed it from the backfill (below) to have the
+  full 250 on day one.
+- **LLM** (`lib/llm.ts`, model `CLAUDE_MODEL`, default `claude-opus-5-5`): the call sends the 10:50 features, the
+  30 most relevant headlines since the prior close (timestamp + headline only) and the strategy list. It does not
+  include the rule's call, so the two sources stay independent for scoring. The request uses structured JSON
+  output. The app also validates the result with zod: every strategy, `call` ∈ run/reduce/skip, `confidence` in
+  0–1, and a reason. A parse or validation failure triggers one retry. A second failure stores an error row
+  (`strategy='*'`, `call='error'`). An API/network error is retried on the next minute until 11:04, when an
+  error row is stored. Prompt and raw responses are saved in `llm_reads`. For models that support it, the
+  request enables Anthropic's server-side refusal fallback (`fallbacks: "default"`).
+
+Strategy names, entry times and descriptions are in `config/strategies.ts`.
+
+## Pages
+
+All pages and `/api/upload` sit behind HTTP basic auth (`DASHBOARD_USER` / `DASHBOARD_PASSWORD`, enforced in
+`proxy.ts` and again in the upload handler). If either variable is unset, access is refused.
+
+- `/dashboard` (`?date=YYYY-MM-DD`): feature charts for the day, the headlines, both calls with reasons, a history
+  table of past calls (LLM / rule) and recent cron runs.
+- `/upload`: upload the Option Omega portfolio trade-log CSV. The app maps the `Strategy` column to the short
+  names (`OO_STRATEGY_MAP` / `OO_STRATEGY_PATTERNS` in `config/strategies.ts`), sums `P/L` by `Date Opened` and
+  strategy, and upserts the result into `outcomes`. Unmapped names and unparseable rows are listed. OO's `P/L`
+  is already the trade total across contracts, so it is summed as is.
+- `/scoring`: for each source (rule, llm) and strategy, the table shows:
+  - the skip/reduce/run day counts and the P/L on each kind of day;
+  - the hit rate (a skip or reduce on a losing day is a hit), next to the base loss rate;
+  - saved, forgone and **net = saved − forgone**, as if the calls had been followed (skip = no trade,
+    reduce = half size).
+
+  A coin-flip baseline places the same number of skip and reduce days at random (2,000 seeded draws). It shows
+  the random net's mean, 5th and 95th percentiles, and the share of draws that matched or beat the actual net.
+- `/api/health` (no auth): `{ last_successful_run, last_minute_et, ... }`.
+
+## Setup
+
+```bash
+npm install
+```
+
+```bash
+cp .env.example .env.local
+```
+
+Fill in `.env.local` (never commit it; `.env*` is git-ignored except `.env.example`):
+
+| Variable | Required | Notes |
+|---|---|---|
+| `ALPACA_API_KEY_ID`, `ALPACA_API_SECRET_KEY` | yes | Market data keys. Never logged. |
+| `ALPACA_FEED` | no | `sip` or `iex`; blank = probe SIP, fall back to IEX |
+| `ALPACA_PAPER` | no | `true` if your keys are paper keys (calendar/clock then come from paper-api; still read-only) |
+| `ALPACA_MAX_RPM` | no | client-side request cap per minute, default 190 |
+| `ANTHROPIC_API_KEY` | yes | |
+| `CLAUDE_MODEL` | no | default `claude-opus-5-5` |
+| `DATABASE_URL` | yes | Neon / Vercel Postgres connection string (`POSTGRES_URL` also accepted) |
+| `RESEND_API_KEY`, `ALERT_EMAIL` | yes | `ALERT_EMAIL` may be a comma-separated list |
+| `ALERT_FROM` | no | verified Resend sender, default `Book advisor <onboarding@resend.dev>` |
+| `DASHBOARD_USER`, `DASHBOARD_PASSWORD` | yes | basic auth for all pages |
+| `CRON_SECRET` | yes | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route |
+| `APP_URL` | no | used for the dashboard link in the email (defaults to the Vercel production URL) |
+
+Create the tables (idempotent):
+
+```bash
+npx tsx scripts/migrate.ts
+```
+
+Run locally, then trigger a tick by hand (outside market hours it logs a skip):
+
+```bash
+npm run dev
+```
+
+```bash
+curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/tick
+```
+
+Tests and type check:
+
+```bash
+npm test
+```
+
+```bash
+npm run typecheck
+```
+
+## Deploy (Vercel)
+
+1. Create a Postgres database (Vercel Marketplace → Neon, or Neon directly). Run the migration against it.
+2. Import the repo into Vercel (Pro plan, for the per-minute cron).
+3. Add every variable from the table above under Project → Settings → Environment Variables (Production).
+4. Deploy. Vercel registers the three cron entries in `vercel.json`. Check them under Project → Settings → Cron
+   Jobs.
+5. Optional but recommended: run the backfill and seed `morning_history`, so the ATR rule has a full 250-day
+   window from the first day:
+
+   ```bash
+   npx tsx scripts/seed-history.ts data/morning_features.csv
+   ```
+
+The cron route allows up to 300 s (`maxDuration`), which covers the 10:50 run with its LLM call.
+
+## Historical backfill (local, not on Vercel)
+
+```bash
+npx tsx scripts/backfill.ts --from 2016-01-01 --to 2026-10-30
+```
+
+(The scripts read `.env.local` / `.env` themselves; variables already in your shell take precedence. `--to`
+defaults to yesterday, ET.) Options: `--out DIR` (default `data`), `--feed sip|iex`, `--skip-news`, `--rpm N`.
+
+- The script pulls SPY/QQQ/IWM/TLT/VIXY 1-minute bars and all news headlines, month by month. It throttles to
+  `--rpm` requests a minute and retries 429s (honouring `retry-after` / `x-ratelimit-reset`) and 5xx errors with
+  backoff.
+- **Resume:** each finished month is cached under `DIR/.cache` and recorded in `DIR/.cache/checkpoint.json`.
+  Re-running skips finished months. An interrupted month is fetched again from its start. The final CSVs are
+  rebuilt from the cache on every run.
+- Outputs:
+  - `data/bars_<SYMBOL>.csv`: `ts_utc,o,h,l,c,v,feed`, regular-session bars only.
+  - `data/news.csv`: `id,ts_utc,headline,symbols,source`, with symbols separated by `|`.
+  - `data/morning_features.csv`: one row per session with the step-3 features computed at 10:50 ET by the
+    same `computeFeatures` the cron uses. It adds `early_close`, `atr30_pct_rank`, `atr30_history_days` and the
+    mechanical `rule_call`.
+- **No LLM calls in the backfill.** Historical tagging is keyword counts only. A model may already know how past
+  days turned out, and that would fake an edge.
+- The free Alpaca plan allows historical SIP data (older than 15 minutes), so the probe usually picks SIP for the
+  backfill even when the live cron has to use IEX. Compare the two feeds with care: IEX volumes and ranges are
+  smaller.
+
+## Code layout
+
+```
+config/keywords.ts     keyword categories (edit here)
+config/strategies.ts   strategies + Option Omega name mapping
+config/rules.ts        symbols, thresholds, schedule, default model
+lib/time.ts            ET/DST conversion, calendar helpers, cron gate        (pure)
+lib/alpaca.ts          read-only Alpaca client + response parsing            (GET-only, allowlisted)
+lib/features.ts        feature computation                                   (pure)
+lib/news.ts            keyword tagging, headline relevance                   (pure)
+lib/decision.ts        rule baseline, LLM prompt, output validation          (pure)
+lib/scoring.ts         scoring + coin-flip baseline                          (pure)
+lib/optionomega.ts     trade-log parsing                                     (pure)
+lib/backfill.ts        backfill chunking + per-day feature loop              (pure)
+lib/llm.ts, email.ts   Anthropic and Resend calls
+lib/db.ts              Postgres access
+lib/agent.ts           one cron tick (ingest → features → decide → email), logged to `runs`
+scripts/               backfill.ts, migrate.ts, seed-history.ts
+tests/                 vitest on fixed sample data (DST transitions, early closes, a simulated morning)
+```
