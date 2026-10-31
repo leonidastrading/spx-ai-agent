@@ -108,6 +108,7 @@ beforeEach(() => {
   process.env.ALPACA_API_SECRET_KEY = "test";
   process.env.ALPACA_FEED = "sip";
   process.env.ALPACA_MAX_RPM = "1000000";
+  process.env.RESEND_API_KEY = "test";
   llmMock.fn.mockReset();
   llmMock.fn.mockResolvedValue({
     model: "test-model",
@@ -279,6 +280,15 @@ describe("runTick", () => {
     const { runTick } = await import("@/lib/agent");
     await runTick(at("10:51"));
     expect(llmMock.fn).toHaveBeenCalledTimes(1);
+    expect(emailMock.sent).toHaveLength(0);
+  });
+
+  it("no Resend key: decisions still made, no email, no error", async () => {
+    delete process.env.RESEND_API_KEY;
+    const { runTick } = await import("@/lib/agent");
+    const r = await runTick(at("10:51"));
+    expect(r.status).toBe("ok");
+    expect(mem.decisions.filter((d) => d.source === "llm")).toHaveLength(7);
     expect(emailMock.sent).toHaveLength(0);
   });
 });

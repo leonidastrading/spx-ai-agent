@@ -157,7 +157,7 @@ Fill in `.env.local` (never commit it; `.env*` is git-ignored except `.env.examp
 | `ANTHROPIC_API_KEY` | yes | |
 | `CLAUDE_MODEL` | no | default `claude-opus-5-5` |
 | `DATABASE_URL` | yes | Neon / Vercel Postgres connection string (`POSTGRES_URL` also accepted) |
-| `RESEND_API_KEY`, `ALERT_EMAIL` | yes | `ALERT_EMAIL` may be a comma-separated list |
+| `RESEND_API_KEY`, `ALERT_EMAIL` | no | only for the 10:51 email; without `RESEND_API_KEY` no email is sent. `ALERT_EMAIL` may be a comma-separated list |
 | `ALERT_FROM` | no | verified Resend sender, default `Book advisor <onboarding@resend.dev>` |
 | `DASHBOARD_USER`, `DASHBOARD_PASSWORD` | yes | basic auth for all pages |
 | `CRON_SECRET` | yes | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route |

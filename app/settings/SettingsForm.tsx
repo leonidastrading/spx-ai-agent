@@ -144,7 +144,7 @@ export default function SettingsForm({
       <section className="card">
         <h2>Email</h2>
         <div className="fields">
-          <Field label="Enabled" hint="10:51 ET summary">
+          <Field label="Enabled" hint="10:51 ET summary; also needs RESEND_API_KEY">
             <span className="toggle"><input type="checkbox" checked={s.email.enabled} onChange={(e) => set("email", { ...s.email, enabled: e.target.checked })} /> Send the daily email</span>
           </Field>
           <Field label="Recipients" hint="Comma-separated. Blank = ALERT_EMAIL env var">

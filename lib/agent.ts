@@ -197,7 +197,8 @@ function summarize(calls: StrategyCall[]): string {
 }
 
 async function maybeEmail(date: string, prior: Session, notes: string[], cfg: Settings): Promise<number> {
-  if (!cfg.email.enabled) return 0;
+  // Email is optional: off in Settings, or no Resend key configured.
+  if (!cfg.email.enabled || !process.env.RESEND_API_KEY?.trim()) return 0;
   const decisions = await store.decisionsForDate(date);
   const llm = decisions.filter((d) => d.source === "llm");
   const rule = decisions.filter((d) => d.source === "rule");

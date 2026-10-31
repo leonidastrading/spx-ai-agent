@@ -154,9 +154,9 @@ export function envStatus(env: Record<string, string | undefined> = process.env)
     { group: "Anthropic", key: "ANTHROPIC_API_KEY", set: has("ANTHROPIC_API_KEY"), required: true },
     { group: "Anthropic", key: "CLAUDE_MODEL", set: has("CLAUDE_MODEL"), required: false, value: env.CLAUDE_MODEL || `default (${LLM.defaultModel})` },
     { group: "Database", key: "DATABASE_URL", set: has("DATABASE_URL") || has("POSTGRES_URL"), required: true },
-    { group: "Email", key: "RESEND_API_KEY", set: has("RESEND_API_KEY"), required: true },
-    { group: "Email", key: "ALERT_EMAIL", set: has("ALERT_EMAIL"), required: false },
-    { group: "Email", key: "ALERT_FROM", set: has("ALERT_FROM"), required: false },
+    { group: "Email (optional)", key: "RESEND_API_KEY", set: has("RESEND_API_KEY"), required: false, value: has("RESEND_API_KEY") ? "" : "email off" },
+    { group: "Email (optional)", key: "ALERT_EMAIL", set: has("ALERT_EMAIL"), required: false },
+    { group: "Email (optional)", key: "ALERT_FROM", set: has("ALERT_FROM"), required: false },
     { group: "Access", key: "DASHBOARD_USER / DASHBOARD_PASSWORD", set: has("DASHBOARD_USER") && has("DASHBOARD_PASSWORD"), required: true },
     { group: "Access", key: "CRON_SECRET", set: has("CRON_SECRET"), required: true },
   ];
