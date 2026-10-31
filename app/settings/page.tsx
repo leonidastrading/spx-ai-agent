@@ -54,7 +54,7 @@ export default async function SettingsPage() {
         <p className="small secondary" style={{ marginBottom: 0 }}>
           Last successful cron run:{" "}
           {data?.lastRun ? `${toEt(new Date(data.lastRun.finished_at)).date} ${toEt(new Date(data.lastRun.finished_at)).hhmm} ET (${data.lastRun.action})` : "none yet"}.
-          {" "}Schedule (set by the crons in <code>vercel.json</code>; see the README): collect {SCHEDULE.windowStart}–{SCHEDULE.windowEnd} ET, decide {SCHEDULE.decisionAt}, email {SCHEDULE.emailAt}, catch-up until {SCHEDULE.catchUpUntil}.
+          {" "}Schedule (cron-job.org or Vercel cron calls /api/cron/tick each minute; see the README): collect {SCHEDULE.windowStart}–{SCHEDULE.windowEnd} ET, decide {SCHEDULE.decisionAt}, email {SCHEDULE.emailAt}, catch-up until {SCHEDULE.catchUpUntil}.
         </p>
       </section>
 

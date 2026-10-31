@@ -35,14 +35,23 @@ The only other outbound calls are to the Anthropic API (once a day, at 10:50 ET)
 | 10:51 | Email: the LLM's market read, a table of strategy / LLM call / rule call, and the top 5 headlines. |
 | 10:51–11:05 | Catch-up only. If the 10:50 run was missed or failed, the decision and email run late, still before the 11:11 "Short" entry. No more data is ingested. |
 
-**Cron.** `vercel.pro.json` holds the schedule: `/api/cron/tick` every minute from 13:30 to 16:00 UTC, Mon–Fri.
-**To turn the schedule on, upgrade the Vercel team to Pro and copy `vercel.pro.json` over `vercel.json`.** Vercel
-rejects any deployment whose `vercel.json` has a more-than-daily cron on the Hobby plan, so the committed
-`vercel.json` has no crons and the dashboard deploys on Hobby. Vercel cron
-runs in UTC, and that window covers both EDT (09:30 ET = 13:30 UTC) and EST (09:30 ET = 14:30 UTC). Each run
-converts the time to America/New_York and checks the Alpaca calendar. Outside a trading day or the window it logs
-a `skipped` run and exits. **Per-minute cron needs a Vercel Pro (or higher) plan**: Hobby crons run at most once
-a day.
+**Schedule.** Something has to call `GET /api/cron/tick` with `Authorization: Bearer $CRON_SECRET` every minute
+on weekday mornings. Each call converts the time to America/New_York and checks the Alpaca calendar. Outside a
+trading day or the 09:30–11:05 ET window it logs a `skipped` run and exits, so calling it more often than
+needed is harmless. Pick one of two ways:
+
+- **cron-job.org (works on Vercel Hobby).** Create a job:
+  - URL: `https://<your-domain>/api/cron/tick`
+  - Schedule: every minute, hours 9, 10 and 11, Monday–Friday, time zone **America/New_York** (cron-job.org
+    handles DST).
+  - Request method: GET, with timeout set to the maximum.
+  - Header `Authorization: Bearer <CRON_SECRET>`.
+  - If Vercel Authentication (Deployment Protection) is on for production, also send the header
+    `x-vercel-protection-bypass: <bypass secret>`. Create that secret under Project → Settings → Deployment
+    Protection → Protection Bypass for Automation.
+- **Vercel cron (needs Pro).** Copy `vercel.pro.json` over `vercel.json`. It runs every minute from 13:30 to
+  16:00 UTC, Mon–Fri, which covers both EDT and EST. On the Hobby plan Vercel rejects any deployment with a
+  more-than-daily cron, which is why the committed `vercel.json` has none.
 
 **Idempotency.** Bars are keyed `(symbol, ts)`, headlines by Alpaca id, and features by `(date, minute)`. Inserts
 use `ON CONFLICT DO NOTHING`, so re-running a minute duplicates nothing. Decisions are keyed
@@ -117,7 +126,7 @@ instead of data.
 
   Settings are validated, saved in the `settings` table, and take effect on the next cron minute. The config
   files are the defaults, and "Reset to defaults" restores them. "Download JSON" exports the settings for the
-  backfill's `--settings` option. The schedule stays fixed in `vercel.json`.
+  backfill's `--settings` option. The minute schedule comes from cron-job.org or Vercel cron (see "Schedule").
 - **CSV export**, from the dashboard and scoring pages:
   - `/api/export?type=calls&from=&to=`: one row per day and strategy. It has the LLM call, confidence and
     reason, the rule call and reason, your P/L, `llm_effect`/`rule_effect` (the P/L change if the call had been
@@ -185,10 +194,9 @@ npm run typecheck
 
 1. Create a Postgres database: Vercel project → Storage → Create Database → Neon, connected to this project. That
    sets `DATABASE_URL`. Tables are created on first use.
-2. Import the repo into Vercel (Pro plan, for the per-minute cron).
+2. Import the repo into Vercel.
 3. Add every variable from the table above under Project → Settings → Environment Variables (Production).
-4. Deploy. Vercel registers the three cron entries in `vercel.json`. Check them under Project → Settings → Cron
-   Jobs.
+4. Deploy, then set up the schedule (cron-job.org, or Vercel cron on Pro; see "Schedule" above).
 5. Optional but recommended: run the backfill and seed `morning_history`, so the ATR rule has a full 250-day
    window from the first day:
 
