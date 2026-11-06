@@ -45,3 +45,31 @@ describe("Option Omega trade log", () => {
     expect(r.badRows).toEqual([{ line: 8, reason: 'bad P/L "n/a"' }]);
   });
 });
+
+describe("strategy name mapping: contains-match, longest wins", () => {
+  it.each([
+    ["SPX Long (sell puts) 32d ORB", "Long"],
+    ["Long (Sell Puts)", "Long"],
+    ["FOMC long straddle 14:35", "FOMC"],
+    ["Long Straddle", "FOMC"],
+    ["VIX>30 1DTE 10d PS", "VIX>30"],
+    ["VIX > 30 put spread", "VIX>30"],
+    ["2DTE put spread VIX<20", "2DTE"],
+    ["2DTE put spread VIX>20", "2DTE"],
+    ["VIX up 1DTE VIX<20", "VIX-up"],
+    ["VIX-up VIX>20", "VIX-up"],
+    ["$8 IC", "$8 IC"],
+    ["Put BWB 13:50", "BWB"],
+  ])("%s -> %s", (name, want) => expect(mapStrategy(name)).toBe(want));
+
+  it("plain 'long' never catches the straddle, and whole words only", () => {
+    expect(mapStrategy("Long straddle", { long: "Long", "long straddle": "FOMC" })).toBe("FOMC");
+    expect(mapStrategy("Longshot bot", { long: "Long" }, ["Long"])).toBeNull();
+    expect(mapStrategy("VIX>300 test", {}, ["VIX>30"])).toBeNull();
+  });
+
+  it("pattern fallback only targets strategies you have", () => {
+    expect(mapStrategy("FOMC straddle", {}, ["Short"])).toBeNull();
+    expect(mapStrategy("FOMC straddle", {}, ["FOMC"])).toBe("FOMC");
+  });
+});

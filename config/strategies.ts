@@ -17,14 +17,22 @@ export const STRATEGIES: StrategyDef[] = [
   { name: "BWB", entryEt: "13:50 / 14:20 / 14:50", description: "0DTE put broken-wing butterfly" },
   { name: "2DTE", entryEt: "15:30", description: "2DTE put spread (down-trend days only)" },
   { name: "VIX-up", entryEt: "15:50", description: "1DTE put spreads when VIX is up >=5% on the day" },
+  {
+    name: "Long",
+    entryEt: "~10:56–13:45",
+    description: "0DTE short put spread (32Δ, 100 wide) after a breakout above the opening-range high, SPX above 4-day SMA",
+  },
+  { name: "VIX>30", entryEt: "13:30", description: "1DTE 10Δ put spread, 50 wide, only when VIX ≥ 30" },
+  { name: "FOMC", entryEt: "14:35", description: "Long 0DTE ATM straddle, FOMC days only (buys premium; wins on big moves)" },
 ];
 
 export const STRATEGY_NAMES = STRATEGIES.map((s) => s.name);
 
 /**
- * Option Omega strategy name -> short name. Keys are matched case-insensitively
- * after trimming. Anything unmatched is reported on the upload page and skipped.
- * Add the exact names you use in Option Omega here.
+ * Option Omega strategy name -> short name. Case-insensitive. A key matches an
+ * OO name that equals it or contains it as whole words; the longest matching
+ * key wins, so "long straddle" (FOMC) beats any shorter key it contains.
+ * Anything unmatched is reported on the upload page and skipped.
  */
 export const OO_STRATEGY_MAP: Record<string, string> = {
   "short": "Short",
@@ -41,13 +49,23 @@ export const OO_STRATEGY_MAP: Record<string, string> = {
   "2dte put spread": "2DTE",
   "vix-up": "VIX-up",
   "vix up": "VIX-up",
+  // Not plain "long": the FOMC bot's name contains "long straddle".
+  "long (sell puts)": "Long",
+  "vix>30": "VIX>30",
+  "vix > 30": "VIX>30",
+  "long straddle": "FOMC",
+  "fomc": "FOMC",
 };
 
 /**
- * Fallback: if no exact key matches, the first rule whose regex matches the OO
+ * Fallback: if no map key matches, the first rule whose regex matches the OO
  * name wins. Keeps the map short when OO names carry suffixes like "(1:30)".
+ * More specific rules come first.
  */
 export const OO_STRATEGY_PATTERNS: Array<[RegExp, string]> = [
+  [/\bfomc\b|\blong\s+straddle\b/i, "FOMC"],
+  [/\blong\s*\(\s*sell\s+puts?\s*\)/i, "Long"],
+  [/\bvix\s*(?:>=?|≥)\s*30\b/i, "VIX>30"],
   [/\bvix[\s-]?up\b/i, "VIX-up"],
   [/\b2\s?dte\b/i, "2DTE"],
   [/\bbwb\b|broken[\s-]?wing/i, "BWB"],

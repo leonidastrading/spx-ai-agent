@@ -17,13 +17,35 @@ export interface ParseReport {
   badRows: Array<{ line: number; reason: string }>;
 }
 
+/** Lower-case, trimmed, single-spaced: how OO names and map keys are compared. */
+export function normalizeOoName(s: string): string {
+  return s.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+const phraseCache = new Map<string, RegExp>();
+/** True if `phrase` occurs in `text` as whole words (not inside a longer word or number). */
+function containsPhrase(text: string, phrase: string): boolean {
+  let re = phraseCache.get(phrase);
+  if (!re) {
+    re = new RegExp(`(?<![a-z0-9])${phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![a-z0-9])`);
+    phraseCache.set(phrase, re);
+  }
+  return re.test(text);
+}
+
 /**
- * Exact name in `map` first (case-insensitive), then the regex fallbacks in
- * config/strategies.ts — only if they point at a strategy in `known`.
+ * 1. A `map` key equal to the name (case-insensitive).
+ * 2. The longest `map` key the name contains as whole words.
+ * 3. The regex fallbacks in config/strategies.ts, only if they point at a strategy in `known`.
  */
 export function mapStrategy(ooName: string, map: Record<string, string> = OO_STRATEGY_MAP, known?: string[]): string | null {
-  const key = ooName.trim().toLowerCase();
-  if (key in map) return map[key];
+  const name = normalizeOoName(ooName);
+  const norm = new Map(Object.entries(map).map(([k, v]) => [normalizeOoName(k), v]));
+  const exact = norm.get(name);
+  if (exact) return exact;
+  let best: string | null = null;
+  for (const k of norm.keys()) if (k && containsPhrase(name, k) && (!best || k.length > best.length)) best = k;
+  if (best) return norm.get(best)!;
   for (const [re, name] of OO_STRATEGY_PATTERNS) if (re.test(ooName) && (!known || known.includes(name))) return name;
   return null;
 }

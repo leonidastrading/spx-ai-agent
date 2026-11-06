@@ -45,6 +45,16 @@ export default function SettingsForm({
   );
   const dirty = JSON.stringify(current) !== JSON.stringify(saved);
   const names = s.strategies.map((x) => x.name);
+  // Default strategies (and their name mappings) added in code after these settings were saved.
+  const newDefaults = defaults.strategies.filter((d) => !names.includes(d.name));
+  const newDefaultMaps = Object.entries(defaults.ooMap).filter(
+    ([k, v]) => newDefaults.some((d) => d.name === v) && !ooRows.some(([rk]) => rk.trim().toLowerCase() === k),
+  );
+  const [hideDefaults, setHideDefaults] = useState(false);
+  function addNewDefaults() {
+    set("strategies", [...s.strategies, ...newDefaults]);
+    setOoRows([...ooRows, ...newDefaultMaps]);
+  }
 
   function load(next: Settings) {
     setS(next);
@@ -95,6 +105,17 @@ export default function SettingsForm({
           <button onClick={reset}>Reset to defaults</button>
         </span>
       </div>
+      {newDefaults.length > 0 && !hideDefaults && (
+        <div className="card notice" role="status">
+          <b>New default strategies aren’t in your saved settings:</b> {newDefaults.map((d) => d.name).join(", ")}
+          {newDefaultMaps.length > 0 && <> (with {newDefaultMaps.length} Option Omega name mappings)</>}.
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+            <button className="primary" onClick={addNewDefaults}>Add them</button>
+            <button onClick={() => setHideDefaults(true)}>Not now</button>
+            <span className="small secondary" style={{ alignSelf: "center" }}>Then review and Save changes.</span>
+          </div>
+        </div>
+      )}
       {status.kind === "error" && (
         <div className="card errorbox" role="alert">
           <b>Not saved:</b>
@@ -176,7 +197,7 @@ export default function SettingsForm({
 
       <section className="card">
         <h2>Option Omega name mapping</h2>
-        <p className="small secondary">The <code>Strategy</code> column of your trade log → short name. Matching is case-insensitive. Unmatched names fall back to built-in patterns (e.g. “Put BWB 13:50” → BWB), then show up as unmapped on the upload page.</p>
+        <p className="small secondary">The <code>Strategy</code> column of your trade log → short name. Case-insensitive. A row matches a name that equals it or contains it as whole words, and the longest matching row wins — so “long straddle” → FOMC beats a shorter row like “long”. Unmatched names fall back to built-in patterns (e.g. “Put BWB 13:50” → BWB), then show up as unmapped on the upload page.</p>
         <div className="table-wrap">
           <table className="edit">
             <thead><tr><th>Option Omega name</th><th>Strategy</th><th /></tr></thead>

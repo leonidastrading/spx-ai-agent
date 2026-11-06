@@ -8,6 +8,7 @@ import { z } from "zod";
 import { LLM, RULES } from "@/config/rules";
 import { OO_STRATEGY_MAP, STRATEGIES, type StrategyDef } from "@/config/strategies";
 import { DEFAULT_KEYWORDS, type KeywordConfig } from "./news";
+import { normalizeOoName } from "./optionomega";
 
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
@@ -112,7 +113,7 @@ export function validateSettings(input: unknown): { ok: true; settings: Settings
     ok: true,
     settings: {
       ...s,
-      ooMap: Object.fromEntries(Object.entries(s.ooMap).map(([k, v]) => [k.trim().toLowerCase(), v])),
+      ooMap: Object.fromEntries(Object.entries(s.ooMap).map(([k, v]) => [normalizeOoName(k), v])),
     },
   };
 }

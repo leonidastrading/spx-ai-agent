@@ -203,7 +203,7 @@ describe("runTick", () => {
     expect(emailMock.sent).toHaveLength(0);
     await runTick(at("10:51"));
     expect(emailMock.sent).toHaveLength(1);
-    expect(emailMock.sent[0].subject).toBe("Book advisor 2024-03-11: 1 skip / 6 reduce");
+    expect(emailMock.sent[0].subject).toBe(`Book advisor 2024-03-11: 1 skip / ${STRATEGY_NAMES.length - 1} reduce`);
 
     // Later minutes neither re-decide nor re-send; nothing ingested past 10:50.
     await runTick(at("10:55"));
@@ -288,7 +288,7 @@ describe("runTick", () => {
     const { runTick } = await import("@/lib/agent");
     const r = await runTick(at("10:51"));
     expect(r.status).toBe("ok");
-    expect(mem.decisions.filter((d) => d.source === "llm")).toHaveLength(7);
+    expect(mem.decisions.filter((d) => d.source === "llm")).toHaveLength(STRATEGY_NAMES.length);
     expect(emailMock.sent).toHaveLength(0);
   });
 });
