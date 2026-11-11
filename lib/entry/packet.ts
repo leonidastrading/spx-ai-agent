@@ -116,6 +116,7 @@ export function buildPacket(p: PacketInput): { packet: Packet; complete: boolean
         backtest_vix_bucket: bucket ? rec.backtest.byVixBucket.find((b) => b.bucket === bucket) ?? null : null,
         vix_bucket: bucket,
         live_vs_backtest: rec.liveVsBacktest,
+        units: "backtest avgPl is $ per contract; live P/L is $ for the whole position",
       }
     : null;
 
@@ -130,6 +131,7 @@ export function buildPacket(p: PacketInput): { packet: Packet; complete: boolean
         stopped_out_today: snap.book.stoppedOutBots,
         daily_last_10: snap.book.daily.filter((d) => d.date < date).slice(-10),
         drawdown_from_high: snap.book.drawdownFromHigh,
+        units: "$; drawdown_from_high is <= 0 (0 = at the high)",
       }
     : null;
 

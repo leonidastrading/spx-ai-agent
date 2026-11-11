@@ -10,6 +10,8 @@ export const EXPORT_PATH = "/api/export/advisor";
 export interface ExportConfig {
   baseUrl: string;
   token: string;
+  /** oo-trading's Vercel "Protection Bypass for Automation" secret, if its deployment is protected. */
+  bypass?: string;
 }
 
 export function exportConfigFromEnv(env: Record<string, string | undefined> = process.env): ExportConfig | null {
@@ -17,7 +19,8 @@ export function exportConfigFromEnv(env: Record<string, string | undefined> = pr
   const token = env.OO_EXPORT_TOKEN?.trim();
   if (!baseUrl || !token) return null;
   if (!/^https:\/\//.test(baseUrl)) throw new Error("OO_EXPORT_URL must be https");
-  return { baseUrl, token };
+  const bypass = env.OO_EXPORT_BYPASS?.trim();
+  return bypass ? { baseUrl, token, bypass } : { baseUrl, token };
 }
 
 export type FetchExport = (since: string) => Promise<OoExport>;
@@ -25,7 +28,9 @@ export type FetchExport = (since: string) => Promise<OoExport>;
 export function makeExportClient(cfg: ExportConfig, fetchImpl: typeof fetch = fetch): FetchExport {
   return async (since) => {
     const url = `${cfg.baseUrl}${EXPORT_PATH}?since=${encodeURIComponent(since)}`;
-    const res = await fetchImpl(url, { method: "GET", headers: { authorization: `Bearer ${cfg.token}`, accept: "application/json" }, cache: "no-store" });
+    const headers: Record<string, string> = { authorization: `Bearer ${cfg.token}`, accept: "application/json" };
+    if (cfg.bypass) headers["x-vercel-protection-bypass"] = cfg.bypass;
+    const res = await fetchImpl(url, { method: "GET", headers, cache: "no-store" });
     if (!res.ok) throw new Error(`oo-trading export ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const parsed = exportSchema.safeParse(await res.json());
     if (!parsed.success) {

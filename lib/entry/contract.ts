@@ -45,6 +45,7 @@ export const exportSchema = z.object({
     todayTotal: z.number(),
     stoppedOutBots: z.array(z.string()),
     daily: z.array(z.object({ date: z.string(), pl: z.number() })),
+    /** <= 0; 0 = at the high. */
     drawdownFromHigh: z.number(),
   }),
   bots: z.record(
