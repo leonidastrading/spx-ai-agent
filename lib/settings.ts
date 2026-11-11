@@ -161,6 +161,7 @@ export function envStatus(env: Record<string, string | undefined> = process.env)
     { group: "Access", key: "DASHBOARD_USER / DASHBOARD_PASSWORD", set: has("DASHBOARD_USER") && has("DASHBOARD_PASSWORD"), required: true },
     { group: "Paper accounts (trader / swing)", key: "TRADER_ALPACA_KEY_ID / TRADER_ALPACA_SECRET_KEY", set: has("TRADER_ALPACA_KEY_ID") && has("TRADER_ALPACA_SECRET_KEY"), required: false, value: has("TRADER_ALPACA_KEY_ID") ? "" : "day trader can't trade" },
     { group: "Paper accounts (trader / swing)", key: "SWING_ALPACA_KEY_ID / SWING_ALPACA_SECRET_KEY", set: has("SWING_ALPACA_KEY_ID") && has("SWING_ALPACA_SECRET_KEY"), required: false, value: has("SWING_ALPACA_KEY_ID") ? "" : "swing ideas can't be saved" },
+    { group: "Entry advisor", key: "OO_EXPORT_URL / OO_EXPORT_TOKEN", set: has("OO_EXPORT_URL") && has("OO_EXPORT_TOKEN"), required: false, value: has("OO_EXPORT_URL") ? "" : "no entries until oo-trading's export is connected" },
     { group: "Access", key: "CRON_SECRET", set: has("CRON_SECRET"), required: true },
   ];
 }

@@ -25,7 +25,7 @@ describe("shadow mode: read-only endpoint allowlist", () => {
     [TRADING_HOST, "/v2/calendar/../orders"],
   ])("refuses %s%s", (host, p) => expect(() => assertReadOnlyEndpoint(host, p)).toThrow(/read-only/));
 
-  it("no source file mentions order/position endpoints or non-GET Alpaca calls", () => {
+  it("no source file mentions order/position endpoints, non-GET Alpaca calls or Schwab API paths", () => {
     const root = path.resolve(import.meta.dirname, "..");
     const files: string[] = [];
     const walk = (dir: string) => {
@@ -41,7 +41,8 @@ describe("shadow mode: read-only endpoint allowlist", () => {
     const broker = path.join(root, "lib", "paper-broker.ts");
     for (const f of files) {
       const src = readFileSync(f, "utf8");
-      expect(src.toLowerCase(), f).not.toContain("schwab");
+      // This repo never talks to Schwab directly (oo-trading does, read-only): no Schwab API host or account/order paths.
+      expect(src, f).not.toMatch(/schwabapi\.com|\/trader\/v1\//);
       if (f === broker) continue;
       // Only the paper broker may talk to order/position/account endpoints or send non-GET requests to Alpaca.
       expect(src, f).not.toMatch(/\/v2\/(orders|positions|account)\b/);

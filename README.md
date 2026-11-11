@@ -265,6 +265,75 @@ by code (`config/trader.ts`, `lib/trader/rules.ts`), never by the model.
   rate, average excess return, and the sleeve's total against SPY. The verdict comes after 30 closed ideas or 6
   months. It says "beats SPY" only if the average excess return is positive and the sleeve is ahead of SPY.
 
+## Entry advisor (shadow mode)
+
+The Entry advisor gives a call on **every bot entry as it fills**: take, reduce (half size) or skip. Each call is
+logged before the outcome is known, then scored against what the book actually did. **It advises only.** It never
+places, changes or blocks a trade, and nothing it says reaches Option Omega or Schwab. The question it answers
+after about two months: would following the per-trade calls have beaten running the book untouched?
+
+- **Trigger.** There is no live entry feed from Option Omega; its endpoint in oo-trading only receives backtest
+  batches. Entries are new **opening fills in Schwab**. oo-trading reads them (read-only) and matches each to a
+  bot by its legs, wing widths, expiry and time. This app polls oo-trading's export endpoint (contract:
+  `docs/oo-trading-export.md`, validated by `lib/entry/contract.ts`) every ~10 s inside each once-a-minute call
+  to `GET /api/cron/entries`.
+- **Bot matching.** Each match carries a confidence score and a reason. A fill that doesn't map to exactly one bot
+  is logged **no_opinion** without calling the model.
+- **Latency** is measured from **Schwab's fill timestamp**, so the polling delay counts. The target is 60 s. Over
+  60 s is flagged as slow; over 120 s is logged **late** and excluded from scoring. If an entry is first seen more
+  than 120 s after its fill, it's logged late without a model call.
+- **The packet** (`lib/entry/packet.ts`) holds only data timestamped at or before the fill: bars that had closed,
+  headlines published, and the latest quote and book snapshots taken on earlier polls. Blocks:
+  - **The trade:** structure, legs, credit, distance of the short strikes from spot, stop and target rules,
+    match confidence.
+  - **The bot's record:** live results for its last 10 days, backtest by entry time and by VIX bucket, live vs
+    backtest gap.
+  - **The book:** today's book and the last 10 days, plus drawdown from the high.
+  - **SPX:** 1-minute/5-minute/daily bars, open, high, low, overnight gap, 30-minute opening range, position in
+    the range, SPY VWAP.
+  - **Volatility:** VIX and VIX9D, their ratio and changes, and the 10:00 straddle against the move so far with
+    the 10-day average.
+  - **Relative moves:** SPY against QQQ, IWM, TLT and RSP (equal weight), today and over 10 days.
+  - **Calendar:** economic releases (marked happened or not), next Fed date, index expirations.
+  - **News:** headlines since the previous call, tagged, and a once-a-day pre-open 10-day news summary.
+  - **The morning call:** the Book advisor's 10:50 call, if it was made before the entry.
+  - **Health:** quote age (flagged over 15 s), missing bars and blocks, news feed up or down.
+
+  **Stocktwits** and the **mega-cap earnings calendar** are marked MISSING: no source yet. Adding one later
+  starts a new version.
+- **Rules enforced by code.** A packet missing a required block (trade, bot record, book, SPX bars, VIX), or a
+  reply with `data_ok: false`, is recorded **no_opinion**. "reduce" means half size. The packet hash, the full
+  reply, the model and the version are logged before the outcome is known. Database triggers make calls,
+  versions, verdicts, news summaries and your pre-open calls append-only. The model never sees its own earlier
+  calls.
+- **Versions.** A version is the sha256 of the model, effort, prompt, reply schema, packet layout and rules.
+  Results are reported per version. Effort defaults to `low` to stay inside the 60 s target.
+- **Scoring** (`/entries/scoring`), per version:
+  - the book as run vs the book as advised: total, max drawdown, worst day and trades;
+  - losses saved vs winners missed;
+  - the random-skip baseline: 1,000 reshuffles of the verdicts within each bot, reported as a percentile;
+  - the rule "reduce all when VIX is up more than 10%";
+  - the morning AI call and your pre-open call;
+  - averages by verdict, confidence, bot, hour and reason category;
+  - day-type accuracy against fixed definitions (in `config/entry.ts` and shown on the page);
+  - cost per day and average latency.
+- **Gate.** After 300 scored entries **and** 40 trading days, Pass requires all three: the advised book made
+  more, had a smaller max drawdown, and is above the 95th percentile of random skips. Otherwise Fail, and the
+  calls stop. A pass switches nothing on.
+- **Your pre-open call** (normal / half size / skip afternoon group, with one line of reason) is accepted only
+  before 09:30 ET and is locked once saved. "Skip afternoon group" means entries from 12:00 ET on.
+
+### Connecting it
+
+1. In oo-trading, add the export endpoint per `docs/oo-trading-export.md`, set `OO_EXPORT_TOKEN` there, and
+   deploy.
+2. Here, set `OO_EXPORT_URL` (the oo-trading domain) and `OO_EXPORT_TOKEN` (the same token) in Vercel, then
+   redeploy.
+3. Add a third cron-job.org job:
+   - URL: `https://<this domain>/api/cron/entries`
+   - Schedule: every minute, hours 9–16, Monday–Friday, America/New_York.
+   - Headers: the same two as the other jobs.
+
 ## Setup
 
 ```bash
@@ -391,6 +460,10 @@ lib/paper-broker.ts    the only order-capable client: Alpaca PAPER host only, PK
 lib/trader/            rules (pure), prompt + version hash (pure), scoring + simulation (pure),
                        store, model call, report, engine (one tick)
 lib/swing/             rules + scoring (pure), engine (entries, exits, fills)
+config/entry.ts        entry advisor fixed rules + day-type definitions
+lib/entry/             contract (oo-trading export), client (GET only), packet (no look-ahead, pure),
+                       prompt + version hash, scoring (pure), store, model calls, report, engine
+docs/oo-trading-export.md  the spec for oo-trading's read-only export endpoint
 scripts/               backfill.ts, migrate.ts, seed-history.ts
 tests/                 vitest on fixed sample data (DST transitions, early closes, a simulated morning)
 ```

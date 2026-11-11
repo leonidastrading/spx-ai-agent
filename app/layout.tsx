@@ -16,6 +16,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/dashboard">Dashboard</Link>
           <Link href="/scoring">Scoring</Link>
           <Link href="/upload">Upload P/L</Link>
+          <Link href="/entries">Entry advisor</Link>
           <Link href="/trader">Day trader</Link>
           <Link href="/swing">Swing ideas</Link>
           <Link href="/settings">Settings</Link>

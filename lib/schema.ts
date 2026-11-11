@@ -262,6 +262,115 @@ CREATE TABLE IF NOT EXISTS swing_events (
 );
 CREATE OR REPLACE TRIGGER swing_events_ro BEFORE UPDATE OR DELETE ON swing_events FOR EACH ROW EXECUTE FUNCTION forbid_change();
 CREATE OR REPLACE TRIGGER swing_events_rot BEFORE TRUNCATE ON swing_events FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
+
+-- ===================== Entry advisor (shadow mode) =====================
+
+CREATE TABLE IF NOT EXISTS entry_versions (
+  id serial PRIMARY KEY,
+  hash text NOT NULL UNIQUE,         -- sha256 of model + effort + prompt + reply schema + packet layout + rules
+  model text NOT NULL,
+  effort text NOT NULL,
+  spec jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE OR REPLACE TRIGGER entry_versions_ro BEFORE UPDATE OR DELETE ON entry_versions FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE OR REPLACE TRIGGER entry_versions_rot BEFORE TRUNCATE ON entry_versions FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
+
+-- One logged call per bot entry per version, written before the trade's outcome is known.
+CREATE TABLE IF NOT EXISTS entry_calls (
+  id bigserial PRIMARY KEY,
+  version_id int NOT NULL REFERENCES entry_versions(id),
+  entry_id text NOT NULL,
+  bot text,
+  match text NOT NULL,               -- exact | ambiguous | none
+  match_confidence double precision NOT NULL,
+  match_reason text,
+  filled_at timestamptz NOT NULL,    -- Schwab fill time: latency is measured from here
+  detected_at timestamptz NOT NULL,  -- when this app first saw the entry
+  logged_at timestamptz NOT NULL,
+  latency_ms integer NOT NULL,       -- logged_at - filled_at
+  status text NOT NULL,              -- called | no_opinion | late | error
+  status_reason text,
+  verdict text,                      -- take | reduce | skip (null unless the model answered)
+  confidence double precision,
+  day_type text,
+  reply jsonb,
+  reply_text text,
+  data_ok boolean,
+  packet_complete boolean,
+  packet_hash text,
+  packet jsonb,
+  model_served text,
+  usage jsonb,
+  cost_usd double precision,
+  vix_change_pct double precision,
+  UNIQUE (version_id, entry_id)
+);
+CREATE INDEX IF NOT EXISTS entry_calls_filled_idx ON entry_calls (filled_at);
+CREATE OR REPLACE TRIGGER entry_calls_ro BEFORE UPDATE OR DELETE ON entry_calls FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE OR REPLACE TRIGGER entry_calls_rot BEFORE TRUNCATE ON entry_calls FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
+
+-- Actual P/L per entry (from oo-trading's Schwab fills), filled in after the trade closes.
+CREATE TABLE IF NOT EXISTS entry_outcomes (
+  entry_id text PRIMARY KEY,
+  bot text,
+  date date NOT NULL,
+  pl double precision NOT NULL,
+  closed_at timestamptz NOT NULL,
+  how text,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- The book as oo-trading reported it on each poll, so a packet can use the state at or before a fill.
+CREATE TABLE IF NOT EXISTS entry_book_snapshots (
+  id bigserial PRIMARY KEY,
+  as_of timestamptz NOT NULL,
+  book jsonb NOT NULL
+);
+CREATE INDEX IF NOT EXISTS entry_book_snapshots_idx ON entry_book_snapshots (as_of DESC);
+
+-- Quote snapshots (SPX / VIX / VIX9D) seen on polls, for "value at or before the fill".
+CREATE TABLE IF NOT EXISTS entry_quote_snapshots (
+  at timestamptz PRIMARY KEY,
+  spx double precision NOT NULL,
+  vix double precision,
+  vix9d double precision
+);
+
+-- VIX closes per day, for day-type definitions.
+CREATE TABLE IF NOT EXISTS entry_market_days (
+  date date PRIMARY KEY,
+  vix_close double precision,
+  vix_prev_close double precision,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Daily pre-open summary of the last 10 days of market-moving news (an input, never edited).
+CREATE TABLE IF NOT EXISTS entry_news_summaries (
+  date date PRIMARY KEY,
+  as_of timestamptz NOT NULL,
+  text text NOT NULL,
+  model text NOT NULL,
+  cost_usd double precision
+);
+CREATE OR REPLACE TRIGGER entry_news_summaries_ro BEFORE UPDATE OR DELETE ON entry_news_summaries FOR EACH ROW EXECUTE FUNCTION forbid_change();
+
+-- Vadim's own pre-open call, locked once saved (and only accepted before 09:30 ET).
+CREATE TABLE IF NOT EXISTS entry_human_calls (
+  date date PRIMARY KEY,
+  call text NOT NULL CHECK (call IN ('normal', 'half', 'skip_afternoon')),
+  reason text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE OR REPLACE TRIGGER entry_human_calls_ro BEFORE UPDATE OR DELETE ON entry_human_calls FOR EACH ROW EXECUTE FUNCTION forbid_change();
+
+CREATE TABLE IF NOT EXISTS entry_verdicts (
+  version_id int PRIMARY KEY REFERENCES entry_versions(id),
+  verdict text NOT NULL,
+  decided_at timestamptz NOT NULL DEFAULT now(),
+  detail jsonb NOT NULL
+);
+CREATE OR REPLACE TRIGGER entry_verdicts_ro BEFORE UPDATE OR DELETE ON entry_verdicts FOR EACH ROW EXECUTE FUNCTION forbid_change();
 `;
 
 /** Split into single statements (the HTTP driver runs one statement per query). */
