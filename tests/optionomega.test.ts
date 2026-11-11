@@ -28,7 +28,7 @@ describe("Option Omega trade log", () => {
     expect(normalizeDate("2024-03-12")).toBe("2024-03-12");
     expect(mapStrategy("$8 IC")).toBe("$8 IC");
     expect(mapStrategy("5d IC (14:30)")).toBe("5d IC");
-    expect(mapStrategy("VIX up 1DTE")).toBe("VIX-up");
+    expect(mapStrategy("VIX up 1DTE")).toBeNull(); // legacy unsplit name: no single live bot
     expect(mapStrategy("Mystery Strategy")).toBeNull();
   });
 
@@ -54,10 +54,10 @@ describe("strategy name mapping: contains-match, longest wins", () => {
     ["Long Straddle", "FOMC"],
     ["VIX>30 1DTE 10d PS", "VIX>30"],
     ["VIX > 30 put spread", "VIX>30"],
-    ["2DTE put spread VIX<20", "2DTE"],
-    ["2DTE put spread VIX>20", "2DTE"],
-    ["VIX up 1DTE VIX<20", "VIX-up"],
-    ["VIX-up VIX>20", "VIX-up"],
+    ["2DTE put spread VIX<20", "2DTE VIX<20"],
+    ["2DTE put spread VIX>20", "2DTE VIX>20"],
+    ["VIX up 1DTE VIX<20", "VIX-up VIX<20"],
+    ["VIX-up VIX>20", "VIX-up VIX>20"],
     ["$8 IC", "$8 IC"],
     ["Put BWB 13:50", "BWB"],
   ])("%s -> %s", (name, want) => expect(mapStrategy(name)).toBe(want));

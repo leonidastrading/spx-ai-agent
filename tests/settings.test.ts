@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { STRATEGY_NAMES } from "@/config/strategies";
 import { categorize, type KeywordConfig } from "@/lib/news";
 import { parseTradeLog } from "@/lib/optionomega";
-import { DEFAULT_SETTINGS, effectiveModel, envStatus, mergeSettings, validateSettings } from "@/lib/settings";
+import { DEFAULT_SETTINGS, effectiveModel, envStatus, mergeSettings, migrateLegacyBots, validateSettings } from "@/lib/settings";
 
 const clone = () => structuredClone(DEFAULT_SETTINGS);
 
@@ -76,5 +76,18 @@ describe("settings take effect", () => {
     const r = parseTradeLog(csv, { "iron fly special": "Fly" }, ["Fly"]);
     expect(r.outcomes).toEqual([{ date: "2024-03-11", strategy: "Fly", pl: 100, trades: 1 }]);
     expect(r.unmapped).toEqual({ "Put BWB 13:50": 1 });
+  });
+});
+
+describe("legacy bot migration", () => {
+  it("swaps 2DTE / VIX-up for the four split bots and drops their OO mappings", () => {
+    const r = migrateLegacyBots(
+      [{ name: "Long", entryEt: "", description: "" }, { name: "2DTE", entryEt: "", description: "" }, { name: "VIX-up", entryEt: "", description: "" }],
+      { "long (sell puts)": "Long", "2dte put spread": "2DTE" },
+    );
+    const names = r.strategies.map((x) => x.name);
+    expect(names).not.toContain("2DTE");
+    expect(names).toEqual(expect.arrayContaining(["2DTE VIX<20", "2DTE VIX>20", "VIX-up VIX<20", "VIX-up VIX>20", "3 Delta"]));
+    expect(r.ooMap).toEqual({ "long (sell puts)": "Long" });
   });
 });

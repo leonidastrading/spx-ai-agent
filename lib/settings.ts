@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { LLM, RULES } from "@/config/rules";
-import { OO_STRATEGY_MAP, STRATEGIES, type StrategyDef } from "@/config/strategies";
+import { LEGACY_STRATEGIES, OO_STRATEGY_MAP, STRATEGIES, type StrategyDef } from "@/config/strategies";
 import { DEFAULT_KEYWORDS, type KeywordConfig } from "./news";
 import { normalizeOoName } from "./optionomega";
 
@@ -125,16 +125,39 @@ export function validateSettings(input: unknown): { ok: true; settings: Settings
 export function mergeSettings(stored: unknown): Settings {
   if (!stored || typeof stored !== "object") return DEFAULT_SETTINGS;
   const s = stored as Partial<Settings>;
+  const { strategies, ooMap } = migrateLegacyBots(s.strategies ?? DEFAULT_SETTINGS.strategies, s.ooMap ?? DEFAULT_SETTINGS.ooMap);
   const candidate = {
     rules: { ...DEFAULT_SETTINGS.rules, ...(s.rules ?? {}) },
     llm: { ...DEFAULT_SETTINGS.llm, ...(s.llm ?? {}) },
     email: { ...DEFAULT_SETTINGS.email, ...(s.email ?? {}) },
-    strategies: s.strategies ?? DEFAULT_SETTINGS.strategies,
-    ooMap: s.ooMap ?? DEFAULT_SETTINGS.ooMap,
+    strategies,
+    ooMap,
     keywords: { ...DEFAULT_SETTINGS.keywords, ...(s.keywords ?? {}) },
   };
   const v = validateSettings(candidate);
   return v.ok ? v.settings : DEFAULT_SETTINGS;
+}
+
+/**
+ * Saved settings from before the VIX split list "2DTE" and "VIX-up". Replace
+ * them with the four split bots (and add 3 Delta), keeping every other edit;
+ * Option Omega mappings that pointed at the retired names are dropped.
+ */
+export function migrateLegacyBots(strategies: StrategyDef[], ooMap: Record<string, string>) {
+  const names = strategies.map((x) => x.name);
+  if (!names.some((n) => LEGACY_STRATEGIES.includes(n))) return { strategies, ooMap };
+  const byName = new Map(STRATEGIES.map((x) => [x.name, x]));
+  const kept = strategies.filter((x) => !LEGACY_STRATEGIES.includes(x.name));
+  const add = STRATEGIES.filter((x) => (x.name.startsWith("2DTE ") || x.name.startsWith("VIX-up ") || x.name === "3 Delta") && !kept.some((k) => k.name === x.name));
+  // Keep the defaults' order for everything known; anything custom goes at the end.
+  const merged = [...kept, ...add];
+  const order = (n: string) => (byName.has(n) ? STRATEGIES.findIndex((x) => x.name === n) : 1000);
+  merged.sort((a, b) => order(a.name) - order(b.name));
+  const live = new Set(merged.map((x) => x.name));
+  return {
+    strategies: merged,
+    ooMap: Object.fromEntries(Object.entries(ooMap).filter(([, v]) => live.has(v))),
+  };
 }
 
 export const strategyNames = (s: Settings) => s.strategies.map((x) => x.name);
