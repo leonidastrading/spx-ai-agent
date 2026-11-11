@@ -28,6 +28,8 @@ export const exportSchema = z.object({
       /** 0–1: how sure the leg/width/expiry/time rules are about the bot. */
       matchConfidence: z.number().min(0).max(1),
       matchReason: z.string(),
+      /** v2 (optional): "rules" = structure rules, "live_profile" = the Live tab's backtest profiles. */
+      matchSource: z.enum(["rules", "live_profile"]).nullable().optional(),
       structure: z.string(),
       underlying: z.string(),
       legs: z.array(leg).min(1),
@@ -47,7 +49,14 @@ export const exportSchema = z.object({
     daily: z.array(z.object({ date: z.string(), pl: z.number() })),
     /** <= 0; 0 = at the high. */
     drawdownFromHigh: z.number(),
+    /** v2 (optional): entries still open, with legs, size and open P/L. */
+    open: z.array(z.object({ entryId: z.string(), bot: z.string().nullable(), filledAt: iso, legs: z.array(leg), contracts: z.number(), pl: z.number() })).optional(),
   }),
+  /** v2 (optional): Schwab net liquidation value now and at each stored end of day. */
+  account: z
+    .object({ netLiq: z.number().nullable(), startNetLiq: z.number().nullable(), asOf: iso, eod: z.array(z.object({ date: z.string(), netLiq: z.number() })) })
+    .nullable()
+    .optional(),
   bots: z.record(
     z.string(),
     z.object({

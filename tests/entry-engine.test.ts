@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { setQuerierForTests } from "@/lib/db";
 import type { OoExport } from "@/lib/entry/contract";
 import { runEntryTick, type EntryDeps } from "@/lib/entry/engine";
+import { accountDrawdown } from "@/lib/entry/packet";
 import { entryReport } from "@/lib/entry/report";
 import * as es from "@/lib/entry/store";
 import { at, D, entry, ooExport } from "./fixtures/ooExport";
@@ -66,11 +67,13 @@ describe("entry advisor engine", () => {
     expect(prompts).toHaveLength(1);
   });
 
-  it("ambiguous bot match → no_opinion without a model call", async () => {
-    exp = ooExport({ entries: [entry({ id: "amb000000000000000000001", bot: null, candidates: ["5d IC", "$8 IC"], match: "ambiguous", matchConfidence: 0.5, matchReason: "IC 50/100", filledAt: at("13:35", 2) })] });
+  it("ambiguous bot match no live profile settles → no_opinion without a model call", async () => {
+    const d = at("13:35", 2).slice(0, 10);
+    const legs = [{ putCall: "P" as const, strike: 7000, qty: -1, expiration: d }, { putCall: "P" as const, strike: 6950, qty: 1, expiration: d }];
+    exp = ooExport({ entries: [entry({ id: "amb000000000000000000001", bot: null, candidates: ["Long", "VIX>30 1DTE"], match: "ambiguous", matchConfidence: 0.5, matchReason: "put spread 50", filledAt: at("13:35", 2), legs })] });
     now = new Date(at("13:35", 12));
     await runEntryTick(deps);
-    expect((await calls()).at(-1)).toMatchObject({ status: "no_opinion", verdict: null, status_reason: expect.stringMatching(/ambiguous \(confidence 0.5\)/) });
+    expect((await calls()).at(-1)).toMatchObject({ status: "no_opinion", verdict: null, status_reason: expect.stringMatching(/below 0.6 \(confidence 0.5\)/) });
     expect(prompts).toHaveLength(1);
   });
 
@@ -133,7 +136,37 @@ describe("entry advisor engine", () => {
     await expect(pg.query(`UPDATE entry_human_calls SET call = 'normal'`)).rejects.toThrow(/append-only/);
   });
 
-  it("a failed gate stops the calls", async () => {
+  it("v2: an IC the export left unmatched is named by its live fills; over-long text is trimmed, kept and flagged; NLV drawdown in the packet", async () => {
+    const fill = at("13:30", 3);
+    const d = fill.slice(0, 10);
+    await priorPoll(fill);
+    const legs = [
+      { putCall: "P" as const, strike: 7590, qty: 12, expiration: d }, { putCall: "P" as const, strike: 7645, qty: -12, expiration: d },
+      { putCall: "C" as const, strike: 7660, qty: -12, expiration: d }, { putCall: "C" as const, strike: 7710, qty: 12, expiration: d },
+    ];
+    exp = ooExport({ entries: [entry({ id: "sma0000000000000000000v2", bot: null, candidates: [], match: "none", matchConfidence: 0, matchReason: "iron condor, puts 55 wide, calls 50 wide", filledAt: fill, legs, contracts: 12, netPrice: 8.05 })] });
+    exp.bots["8SMA IC"] = exp.bots["5d IC"];
+    now = new Date(at("13:30", 15));
+    const long = Array(40).fill("risk").join(" ");
+    replyFor = () => ({ main_risk: long });
+    const before = prompts.length;
+    await runEntryTick(deps);
+    replyFor = () => ({});
+    const row = (await pg.query<any>(`SELECT * FROM entry_calls WHERE entry_id = 'sma0000000000000000000v2'`)).rows[0];
+    expect(row).toMatchObject({ status: "called", bot: "8SMA IC", match_source: "local_profile", trimmed: ["main_risk"] });
+    expect(row.status_reason).toMatch(/trimmed: main_risk/);
+    expect(row.reply.main_risk.split(" ")).toHaveLength(25);
+    expect(prompts.length).toBe(before + 1);
+    // The fixture day (2024) is before the drawdown window, so the packet says so rather than show a wrong number.
+    expect(row.packet.book.account_drawdown).toMatch(/unavailable/);
+    expect(row.packet.book.drawdown_from_high).toBeUndefined();
+    // On a 2026 fill: latest NLV at or before the fill against the high since Oct 19, 2026.
+    await es.saveNlv({ netLiq: 804_000, startNetLiq: 810_000, asOf: "2026-11-11T18:29:00.000Z", eod: [{ date: "2026-10-20", netLiq: 1_000_000 }, { date: "2026-10-16", netLiq: 1_100_000 }] }, (x) => `${x}T20:00:00.000Z`);
+    const nlv = await es.nlvAt("2026-11-11T18:30:03.000Z", "2026-10-19T04:00:00.000Z");
+    expect(accountDrawdown(nlv, Date.parse("2026-11-11T18:30:03.000Z"))).toMatchObject({ net_liq: 804000, high: 1000000, high_date: "2026-10-20", drawdown: -196000, drawdown_pct: -19.6 });
+  });
+
+    it("a failed gate stops the calls", async () => {
     const [v] = await es.listEntryVersions();
     await es.recordEntryVerdict(v.id, "fail", {});
     exp = ooExport({ entries: [entry({ id: "after0000000000000000001", filledAt: at("15:40", 0) })] });

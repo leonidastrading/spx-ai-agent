@@ -310,6 +310,17 @@ CREATE INDEX IF NOT EXISTS entry_calls_filled_idx ON entry_calls (filled_at);
 CREATE OR REPLACE TRIGGER entry_calls_ro BEFORE UPDATE OR DELETE ON entry_calls FOR EACH ROW EXECUTE FUNCTION forbid_change();
 CREATE OR REPLACE TRIGGER entry_calls_rot BEFORE TRUNCATE ON entry_calls FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
 
+-- v2: how the bot was matched, and which reply fields were trimmed to the word limit (null = none).
+ALTER TABLE entry_calls ADD COLUMN IF NOT EXISTS match_source text;
+ALTER TABLE entry_calls ADD COLUMN IF NOT EXISTS trimmed jsonb;
+
+-- Schwab net liquidation value as oo-trading reported it (live on each poll, and each stored end of day).
+CREATE TABLE IF NOT EXISTS entry_nlv (
+  at timestamptz PRIMARY KEY,
+  net_liq double precision NOT NULL,
+  source text NOT NULL             -- live | eod
+);
+
 -- Actual P/L per entry (from oo-trading's Schwab fills), filled in after the trade closes.
 CREATE TABLE IF NOT EXISTS entry_outcomes (
   entry_id text PRIMARY KEY,

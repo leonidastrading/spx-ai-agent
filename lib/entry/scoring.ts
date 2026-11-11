@@ -20,6 +20,8 @@ export interface ScoredCall {
   confidence: number;
   dayType: string;
   categories: string[];
+  /** The category of the first (leading) reason: what drove the call. */
+  driver?: string | null;
   /** VIX % change on the day at the entry (for the simple-rule baseline). */
   vixChangePct: number | null;
   pl: number;
@@ -203,4 +205,46 @@ export function entryGate(args: { scored: number; tradingDays: number; run: Book
     },
   ];
   return { ready, verdict: ready ? (checks.every((c) => c.ok === true) ? ("pass" as const) : ("fail" as const)) : null, checks };
+}
+
+/** Groups for "what drove a reduce/skip": the bot's own recent results vs the market vs anything else. */
+export const DRIVER_GROUPS = [
+  { key: "bot_record", label: "Bot's recent record (bot_record)", cats: ["bot_record"] },
+  { key: "market", label: "Market: price / vol / news", cats: ["price", "vol", "news"] },
+  { key: "other", label: "Other: calendar / book / data", cats: ["calendar", "book", "data"] },
+] as const;
+
+export interface DriverRow {
+  key: string;
+  label: string;
+  n: number;
+  reduce: number;
+  skip: number;
+  /** Average actual (as-run) P/L of these trades: negative means the cut trades were losers on average. */
+  avgPl: number | null;
+  saved: number;
+  missed: number;
+  net: number;
+}
+
+/**
+ * Reduce/skip calls split by the category of their leading reason, so calls based on the bot's recent losses can be
+ * compared with calls based on price, vol or news. Each row: how many, their average actual P/L, and what cutting
+ * them saved (losers) and missed (winners).
+ */
+export function reasonSplit(calls: ScoredCall[]): DriverRow[] {
+  const cut = calls.filter((c) => c.verdict !== "take");
+  return DRIVER_GROUPS.map((g) => {
+    const xs = cut.filter((c) => (g.cats as readonly string[]).includes(c.driver ?? c.categories[0] ?? "other"));
+    const sm = savedVsMissed(xs);
+    return {
+      key: g.key,
+      label: g.label,
+      n: xs.length,
+      reduce: xs.filter((c) => c.verdict === "reduce").length,
+      skip: xs.filter((c) => c.verdict === "skip").length,
+      avgPl: xs.length ? r2(xs.reduce((a, c) => a + c.pl, 0) / xs.length) : null,
+      ...sm,
+    };
+  });
 }

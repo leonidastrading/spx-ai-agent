@@ -16,6 +16,7 @@ import { acquireLock, econFor, econUpcoming, releaseLock } from "../trader/store
 import type { OoEntry, OoExport } from "./contract";
 import type { FetchExport } from "./client";
 import type { EntryCallModel } from "./llm";
+import { resolveBot } from "./matcher";
 import { buildPacket, packetHash, type RelBars } from "./packet";
 import { entryVersionHash, entryVersionSpec, parseEntryReply, renderEntryPrompt } from "./prompt";
 import { entryReport } from "./report";
@@ -66,6 +67,7 @@ export async function runEntryTick(deps: EntryDeps): Promise<EntryTickResult> {
       }
       if (exp) {
         await es.saveBookSnapshot(exp.asOf, exp.book);
+        await es.saveNlv(exp.account ?? null, (d) => etToUtc(d, "16:00").toISOString());
         await es.saveQuoteSnapshots(exp.market.snapshots);
         await es.upsertOutcomes(exp.outcomes, (iso) => toEt(new Date(iso)).date);
         if (toEt(deps.clock()).minutes >= 16 * 60) await es.upsertMarketDay(et.date, exp.market.vix.last, exp.market.vix.prevClose);
@@ -135,19 +137,22 @@ async function handleEntry(
 ) {
   const detectedAt = deps.clock().toISOString();
   const filledMs = Date.parse(entry.filledAt);
+  // Which bot: the export's match, else how the bots fill live (v2). Shown with its confidence either way.
+  const who = resolveBot(entry);
   const base = {
-    versionId: version.id, entryId: entry.id, bot: entry.bot, match: entry.match, matchConfidence: entry.matchConfidence, matchReason: entry.matchReason,
-    filledAt: entry.filledAt, detectedAt,
+    versionId: version.id, entryId: entry.id, bot: who.bot, match: who.confident ? "exact" : entry.match, matchConfidence: who.confidence, matchReason: who.reason,
+    matchSource: who.source, filledAt: entry.filledAt, detectedAt,
   };
+  entry = { ...entry, bot: who.bot, match: who.confident ? "exact" : entry.match, matchConfidence: who.confidence, matchReason: who.reason };
   const empty = { verdict: null, confidence: null, dayType: null, reply: null, replyText: null, dataOk: null, packetComplete: null, packetHash: null, packet: null, modelServed: null, usage: null, costUsd: null, vixChangePct: null };
   const stamp = () => {
     const loggedAt = deps.clock();
     return { loggedAt: loggedAt.toISOString(), latencyMs: loggedAt.getTime() - filledMs };
   };
 
-  // A fill that doesn't map to exactly one bot gets no opinion (no model call).
-  if (entry.match !== "exact" || !entry.bot) {
-    await es.logCall({ ...base, ...empty, ...stamp(), status: "no_opinion", statusReason: `bot match ${entry.match} (confidence ${entry.matchConfidence}): ${entry.matchReason}` });
+  // A fill that doesn't map confidently to one bot gets no opinion (no model call).
+  if (!who.confident || !who.bot) {
+    await es.logCall({ ...base, ...empty, ...stamp(), status: "no_opinion", statusReason: `bot match below ${ENTRY.matchMinConfidence} (confidence ${who.confidence}${who.bot ? `, best guess ${who.bot}` : ""}): ${who.reason}` });
     return;
   }
   // Already past the limit when first seen (e.g. the scheduler was down): log late, don't call.
@@ -158,7 +163,7 @@ async function handleEntry(
 
   const date = toEt(new Date(filledMs)).date;
   const settings = await store.loadSettings();
-  const [quoteSnaps, books, lastCall, econ, upcoming, morning, summary] = await Promise.all([
+  const [quoteSnaps, books, lastCall, econ, upcoming, morning, summary, nlv] = await Promise.all([
     es.quoteSnapshotsSince(etToUtc(date, "00:00").toISOString()),
     es.bookSnapshotsSince(new Date(filledMs - 15 * 60000).toISOString()),
     es.lastCallAt(version.id, etToUtc(date, "00:00").toISOString()),
@@ -166,10 +171,11 @@ async function handleEntry(
     econUpcoming(date),
     es.morningCalls(),
     es.newsSummaryFor(date),
+    es.nlvAt(entry.filledAt, etToUtc(ENTRY.drawdownSince, "00:00").toISOString()),
   ]);
   const since = lastCall && Date.parse(lastCall) < filledMs ? lastCall : new Date(filledMs - 18 * 3600000).toISOString();
   const headlines = topHeadlines(await store.loadNews(new Date(since), new Date(filledMs + 1)), 40, settings.keywords);
-  const strategy = mapStrategy(entry.bot, settings.ooMap, strategyNames(settings));
+  const strategy = entry.bot && mapStrategy(entry.bot, settings.ooMap, strategyNames(settings));
   const mc = strategy ? morning.find((m) => m.date === date && m.strategy === strategy) : undefined;
   const nextFed = upcoming.find((e) => /fomc|fed\b/i.test(e.event) && (e.date > date || e.time_et >= toEt(new Date(filledMs)).hhmm));
   const merged = new Map(quoteSnaps.map((s) => [s.at, s]));
@@ -188,6 +194,7 @@ async function handleEntry(
     nextFed: nextFed ? `${nextFed.date} ${nextFed.time_et} ${nextFed.event}` : null,
     morningCall: mc ? { call: mc.call, reason: mc.reason, decidedAt: mc.createdAt } : null,
     keywords: settings.keywords,
+    nlv,
   });
   const hash = packetHash(packet);
   const vixChangePct = (packet.market.vol as { vix_change_today_pct: number | null }).vix_change_today_pct;
@@ -202,9 +209,10 @@ async function handleEntry(
   }
   const modelBits = { replyText: call.text, modelServed: call.modelServed, usage: call.usage, costUsd: call.costUsd };
   let reply;
+  let trimmed: string[] = [];
   try {
     if (call.stopReason === "refusal") throw new Error("model refused");
-    reply = parseEntryReply(call.text);
+    ({ reply, trimmed } = parseEntryReply(call.text));
   } catch (err) {
     await es.logCall({ ...base, ...empty, ...withPacket, ...modelBits, ...stamp(), status: "error", statusReason: `invalid reply: ${err instanceof Error ? err.message : err}` });
     return;
@@ -220,12 +228,14 @@ async function handleEntry(
         : "model said data_ok=false"
       : status === "late"
         ? `logged ${Math.round(t.latencyMs / 1000)}s after the fill`
-        : t.latencyMs > ENTRY.targetLatencySeconds * 1000
-          ? `slow: ${Math.round(t.latencyMs / 1000)}s (over the ${ENTRY.targetLatencySeconds}s target)`
-          : null;
+        : [
+            t.latencyMs > ENTRY.targetLatencySeconds * 1000 ? `slow: ${Math.round(t.latencyMs / 1000)}s (over the ${ENTRY.targetLatencySeconds}s target)` : null,
+            trimmed.length ? `trimmed: ${trimmed.join(", ")}` : null,
+          ].filter(Boolean).join("; ") || null;
   await es.logCall({
     ...base, ...withPacket, ...modelBits, ...t, status, statusReason,
     verdict: status === "no_opinion" ? null : reply.verdict, confidence: reply.confidence, dayType: reply.day_type, reply, dataOk: reply.data_ok,
+    trimmed,
   });
   notes.push(`${entry.bot}: ${status === "no_opinion" ? "no_opinion" : reply.verdict} (${Math.round(t.latencyMs / 1000)}s)`);
 }

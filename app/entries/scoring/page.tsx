@@ -45,7 +45,9 @@ export default async function EntryScoring({ searchParams }: { searchParams: Pro
   if (!versions.length) return (<><h1>Entry advisor scoring</h1><section className="card muted">No versions yet: the first entry-advisor tick creates one.</section></>);
   const sp = await searchParams;
   const version = versions.find((v) => String(v.id) === sp.v) ?? versions[versions.length - 1];
+  const all = await Promise.all(versions.map((v) => (v.id === version.id ? null : entryReport(v))));
   const r = await entryReport(version);
+  const reports = versions.map((v, i) => all[i] ?? r);
   const take = r.byVerdict.find((b) => b.key === "take");
   const skip = r.byVerdict.find((b) => b.key === "skip");
 
@@ -62,6 +64,26 @@ export default async function EntryScoring({ searchParams }: { searchParams: Pro
         <Link href="/entries" className="small">← Entry advisor</Link>
       </form>
 
+      <section className="card">
+        <h2>Versions, reported separately</h2>
+        <p className="small secondary">Each version is a frozen model, prompt, packet and matching rules; results never mix. v2 adds bot matching by live fills, trimmed (not dropped) over-long replies, and account drawdown from Schwab net liquidation value.</p>
+        <div className="table-wrap"><table>
+          <thead><tr><th>Version</th><th>From</th><th className="num">Logged</th><th className="num">Scored</th><th className="num">No opinion</th><th className="num">Errors</th><th className="num">Trimmed</th><th className="num">As run</th><th className="num">As advised</th><th className="num">Advised − run</th></tr></thead>
+          <tbody>
+            {reports.map((x) => (
+              <tr key={x.version.id} className={x.version.id === version.id ? "today" : ""}>
+                <td><Link href={`?v=${x.version.id}`}>v{x.version.id}</Link> <span className="muted small">{x.version.model} · {x.version.effort}</span></td>
+                <td>{toEt(new Date(x.version.createdAt)).date}</td>
+                <td className="num">{x.counts.logged}</td><td className="num">{x.scored.length}</td><td className="num">{x.counts.noOpinion}</td>
+                <td className="num">{x.counts.error}{x.counts.lengthErrors ? <span className="muted small"> ({x.counts.lengthErrors} length)</span> : null}</td>
+                <td className="num">{x.counts.trimmed}</td>
+                <td className="num">{signed(x.run.total)}</td><td className="num">{signed(x.advised.total)}</td><td className="num">{signed(x.advised.total - x.run.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </section>
+
       <section className={`card ${r.verdict?.verdict === "fail" ? "errorbox" : "notice"}`}>
         <h2>Decision gate: {r.verdict ? r.verdict.verdict.toUpperCase() : r.gate.ready ? (r.gate.verdict ?? "").toUpperCase() : "not yet"}</h2>
         <p className="small secondary">
@@ -70,7 +92,10 @@ export default async function EntryScoring({ searchParams }: { searchParams: Pro
         </p>
         <ul>{r.gate.checks.map((c) => <li key={c.label}><span className={c.ok === null ? "muted" : c.ok ? "call-run" : "call-skip"}>{c.ok === null ? "…" : c.ok ? "✓" : "✕"}</span> {c.label} <span className="muted small">({c.detail})</span></li>)}</ul>
         <p className="small muted" style={{ marginBottom: 0 }}>
-          Logged {r.counts.logged} · scored {r.scored.length} · awaiting outcome {r.counts.awaitingOutcome} · no opinion {r.counts.noOpinion} · late {r.counts.late} · errors {r.counts.error}.
+          Logged {r.counts.logged} · scored {r.scored.length} · awaiting outcome {r.counts.awaitingOutcome} · no opinion {r.counts.noOpinion} (bot match below {ENTRY.matchMinConfidence}: {r.counts.lowMatch}) · late {r.counts.late} · errors {r.counts.error}
+          {r.counts.lengthErrors ? ` (${r.counts.lengthErrors} dropped for length)` : ""}.
+          Trimmed to the {ENTRY.maxReasonWords}-word limit and kept: {r.counts.trimmed} of {r.counts.logged} ({r.counts.logged ? ((r.counts.trimmed / r.counts.logged) * 100).toFixed(0) : 0}%).
+          Bot named by live fills (not the structure rules): {r.counts.matchedByLiveFills}.
           Only on-time calls with data_ok and a complete packet are scored.
         </p>
       </section>
@@ -94,6 +119,25 @@ export default async function EntryScoring({ searchParams }: { searchParams: Pro
           <b>Random-skip baseline</b> ({ENTRY.randomPermutations} reshuffles of the same verdicts within each bot): the advised book sits at the{" "}
           <b>{r.random.percentile === null ? "—" : `${(r.random.percentile * 100).toFixed(1)}th`}</b> percentile (random mean {usd(r.random.mean)}, 95th percentile {usd(r.random.p95)}).
         </p>
+      </section>
+
+      <section className="card">
+        <h2>Reduce / skip calls by what drove them</h2>
+        <p className="small secondary">
+          Each reduce or skip is filed under the category of its first (leading) reason. If cuts based on the bot’s own recent losses don’t avoid more losers than cuts based on price, vol or news, the recent-record reasoning adds nothing.
+          Reference: take calls average {signed(r.takeAvgPl)} actual P/L.
+        </p>
+        <div className="table-wrap"><table>
+          <thead><tr><th>Leading reason</th><th className="num">Calls</th><th className="num">Reduce</th><th className="num">Skip</th><th className="num">Avg actual P/L</th><th className="num">Saved</th><th className="num">Missed</th><th className="num">Net</th></tr></thead>
+          <tbody>
+            {r.byDriver.map((d) => (
+              <tr key={d.key}>
+                <td>{d.label}</td><td className="num">{d.n}</td><td className="num">{d.reduce}</td><td className="num">{d.skip}</td>
+                <td className="num">{signed(d.avgPl)}</td><td className="num">{signed(d.saved)}</td><td className="num">{signed(-d.missed)}</td><td className="num">{signed(d.net)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
       </section>
 
       <section className="card">

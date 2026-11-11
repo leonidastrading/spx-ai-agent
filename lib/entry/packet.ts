@@ -37,6 +37,8 @@ export interface PacketInput {
   nextFed: string | null;
   morningCall: { call: string; reason: string; decidedAt: string } | null;
   keywords: KeywordConfig;
+  /** Schwab net liquidation value at or before the fill, and its high since ENTRY.drawdownSince (v2). */
+  nlv?: { current: { at: string; netLiq: number } | null; high: { at: string; netLiq: number } | null };
 }
 
 const r2 = (x: number | null | undefined) => (x === null || x === undefined || !Number.isFinite(x) ? null : Math.round(x * 100) / 100);
@@ -130,10 +132,11 @@ export function buildPacket(p: PacketInput): { packet: Packet; complete: boolean
         today_total: snap.book.todayTotal,
         stopped_out_today: snap.book.stoppedOutBots,
         daily_last_10: snap.book.daily.filter((d) => d.date < date).slice(-10),
-        drawdown_from_high: snap.book.drawdownFromHigh,
-        units: "$; drawdown_from_high is <= 0 (0 = at the high)",
+        account_drawdown: accountDrawdown(p.nlv, at),
+        units: "$; account_drawdown.drawdown is <= 0 (0 = at the high)",
       }
     : null;
+  if (book && typeof book.account_drawdown === "string") notes.push(book.account_drawdown);
 
   // ---- market
   const sessionOpen = etToUtc(date, "09:30").getTime();
@@ -242,6 +245,23 @@ export function buildPacket(p: PacketInput): { packet: Packet; complete: boolean
     health: { quote_age_s: quoteAge, missing, news_feed_ok: p.newsFeedOk, notes },
   };
   return { packet, complete: missing.length === 0 };
+}
+
+/** Drawdown from Schwab net liquidation value against its high since ENTRY.drawdownSince, both at or before the fill. */
+export function accountDrawdown(nlv: PacketInput["nlv"], at: number) {
+  const cur = nlv?.current && before(nlv.current.at, at) ? nlv.current : null;
+  const high = nlv?.high && before(nlv.high.at, at) ? nlv.high : null;
+  if (!cur || !high) return "account drawdown unavailable: no Schwab net liquidation value from oo-trading yet";
+  const hi = Math.max(high.netLiq, cur.netLiq);
+  return {
+    net_liq: r2(cur.netLiq),
+    net_liq_as_of_et: `${toEt(new Date(cur.at)).date} ${toEt(new Date(cur.at)).hhmm}`,
+    high_since: ENTRY.drawdownSince,
+    high: r2(hi),
+    high_date: hi === cur.netLiq ? toEt(new Date(cur.at)).date : toEt(new Date(high.at)).date,
+    drawdown: r2(cur.netLiq - hi),
+    drawdown_pct: pct(cur.netLiq, hi),
+  };
 }
 
 function canonical(v: unknown): string {

@@ -60,7 +60,7 @@ export default async function EntriesPage() {
               {today.map((c) => (
                 <tr key={c.id}>
                   <td className="small">{hhmmss(c.filledAt)}</td>
-                  <td className="small">{c.bot ?? "?"}{c.match !== "exact" && <div className="muted">match {c.match} ({c.matchConfidence})</div>}</td>
+                  <td className="small">{c.bot ?? "?"}<div className="muted">match {c.matchConfidence.toFixed(2)}{c.match !== "exact" ? ` · ${c.match}` : ""}{c.matchSource === "local_profile" || c.matchSource === "live_profile" ? " · by live fills" : ""}</div>{c.trimmed?.length ? <div className="muted">trimmed</div> : null}</td>
                   <td className={`num small ${c.latencyMs > ENTRY.lateAfterSeconds * 1000 ? "call-error" : c.latencyMs > ENTRY.targetLatencySeconds * 1000 ? "call-reduce" : ""}`}>{Math.round(c.latencyMs / 1000)}s</td>
                   <td className={`small ${c.status === "called" ? "" : c.status === "error" || c.status === "late" ? "call-error" : "call-reduce"}`}>{c.status.replace("_", " ")}{c.statusReason && <div className="muted">{c.statusReason}</div>}</td>
                   <td className={`small call call-${c.verdict === "take" ? "run" : c.verdict ?? ""}`}>{c.verdict ?? (c.reply?.verdict ? <span className="muted">({c.reply.verdict})</span> : "")}</td>

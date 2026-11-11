@@ -76,6 +76,26 @@ One element per bot entry (all legs of one opening order, or of fills that belon
 - **`netPrice`**: positive = credit, negative = debit, per 1-lot, in index points.
 - **`rules`**: the bot's stop and target as configured (free text), or nulls.
 
+## v2 additions (all optional; older exports still validate)
+
+Patch: `docs/oo-trading-advisor-v2.patch` (apply on oo-trading's production branch with `git am`; its tests pass, 140/140).
+
+- `entries[].matchSource`: `"rules"` (structure rules) or `"live_profile"`. When the rules don't fit an entry,
+  the export now uses the same attribution as the Live tab (`profileMatch` in `scorecard.ts`: leg signature, nearest
+  usual entry time from the OO backtests, usual credit range) and sets a confidence: 0.9, less for an entry time
+  away from the usual one, a credit outside the usual range or a close runner-up. The advisor gives no opinion
+  below 0.6. Example: Nov 11, 2026 13:30 and 13:35 ICs (puts 55 / calls 50 wide) were `none` and now name
+  8SMA IC and $8 IC.
+- `book.open[]`: entries still open now: `entryId, bot, filledAt, legs, contracts, pl` (open P/L at the marks).
+- `account`: `{ netLiq, startNetLiq, asOf, eod: [{ date, netLiq }] }`: Schwab net liquidation value now and at
+  each stored end of day. No account number, hash or last four. The advisor stores every reading and measures the
+  packet's drawdown as NLV against its high since Oct 19, 2026. (`book.drawdownFromHigh` only sums the last
+  15 trading days of book P/L, which is why Nov 11's packet said −145k when the account was down ~196k; the
+  advisor no longer shows it to the model.)
+
+Until the patch is deployed the advisor still names those ICs itself, from how the bots fill at Schwab
+(`config/entry.ts` `LIVE_PROFILES`), and the packet says the account drawdown is unavailable.
+
 ## Env vars
 
 | Where | Var | Value |

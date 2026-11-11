@@ -6,13 +6,13 @@ import { strategyNames } from "../settings";
 import { etToUtc, toEt } from "../time";
 import {
   actualDayType, asAdvised, asRun, bucketBy, confidenceBand, dayTypeAccuracy, entryGate, hourBucket, humanWeight, morningWeight,
-  randomSkipBaseline, savedVsMissed, simpleRule, withWeights, type BookStats, type Bucket, type ScoredCall,
+  randomSkipBaseline, reasonSplit, savedVsMissed, simpleRule, withWeights, type DriverRow, type BookStats, type Bucket, type ScoredCall,
 } from "./scoring";
 import * as es from "./store";
 
 export interface EntryReport {
   version: es.EntryVersion;
-  counts: { logged: number; called: number; noOpinion: number; late: number; error: number; awaitingOutcome: number };
+  counts: { logged: number; called: number; noOpinion: number; late: number; error: number; awaitingOutcome: number; trimmed: number; lengthErrors: number; matchedByLiveFills: number; lowMatch: number };
   scored: ScoredCall[];
   tradingDays: number;
   run: BookStats;
@@ -27,6 +27,10 @@ export interface EntryReport {
   byBot: Bucket[];
   byHour: Bucket[];
   byReason: Bucket[];
+  /** Reduce/skip calls by the category of their leading reason (bot_record vs price/vol/news vs other). */
+  byDriver: DriverRow[];
+  /** Average actual P/L of the "take" calls, as the reference for byDriver. */
+  takeAvgPl: number | null;
   dayTypes: ReturnType<typeof dayTypeAccuracy> & { rows: Array<{ date: string; said: string[]; actual: string | null }> };
   cost: { total: number; perDay: number | null; avgLatencySec: number | null; slowShare: number | null };
   gate: ReturnType<typeof entryGate>;
@@ -57,6 +61,7 @@ export async function entryReport(version: es.EntryVersion): Promise<EntryReport
       confidence: c.confidence ?? 0,
       dayType: c.dayType ?? "unclear",
       categories: [...new Set(((c.reply?.reasons ?? []) as Array<{ category: string }>).map((r) => r.category))],
+      driver: (c.reply?.reasons?.[0]?.category as string | undefined) ?? null,
       vixChangePct: c.vixChangePct,
       pl: outcomes.get(c.entryId)!.pl,
     }));
@@ -100,6 +105,11 @@ export async function entryReport(version: es.EntryVersion): Promise<EntryReport
       late: calls.filter((c) => c.status === "late").length,
       error: calls.filter((c) => c.status === "error").length,
       awaitingOutcome: scorable.length - scored.length,
+      trimmed: calls.filter((c) => c.trimmed?.length).length,
+      // v1 dropped over-long replies as errors; v2 trims them instead.
+      lengthErrors: calls.filter((c) => c.status === "error" && /at most \d+ words/.test(c.statusReason ?? "")).length,
+      matchedByLiveFills: calls.filter((c) => c.matchSource === "local_profile" || c.matchSource === "live_profile").length,
+      lowMatch: calls.filter((c) => c.status === "no_opinion" && /bot match/.test(c.statusReason ?? "")).length,
     },
     scored,
     tradingDays: dates.length,
@@ -115,6 +125,11 @@ export async function entryReport(version: es.EntryVersion): Promise<EntryReport
     byBot: bucketBy(scored, (c) => c.bot),
     byHour: bucketBy(scored, (c) => hourBucket(c.filledAt)),
     byReason: bucketBy(scored, (c) => (c.categories.length ? c.categories : ["none"])),
+    byDriver: reasonSplit(scored),
+    takeAvgPl: (() => {
+      const t = scored.filter((c) => c.verdict === "take");
+      return t.length ? Math.round((t.reduce((a, c) => a + c.pl, 0) / t.length) * 100) / 100 : null;
+    })(),
     dayTypes: {
       ...dayTypeAccuracy(dayCalls, actual),
       rows: [...actual.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, 30).map(([date, a]) => ({ date, said: dayCalls.filter((c) => c.date === date).map((c) => c.dayType), actual: a })),

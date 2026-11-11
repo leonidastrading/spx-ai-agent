@@ -1,7 +1,7 @@
 /** Entry advisor: frozen prompt, reply schema and validation, version identity. Pure. */
 
 import { z } from "zod";
-import { DAY_TYPE_RULES, ENTRY } from "@/config/entry";
+import { DAY_TYPE_RULES, ENTRY, LIVE_PROFILES } from "@/config/entry";
 import { canonicalJson, sha256, type Packet } from "./packet";
 
 export const VERDICTS = ["take", "reduce", "skip"] as const;
@@ -19,14 +19,15 @@ Classify the day so far as one of trend_up, trend_down, range, reversal, vol_exp
 Reply with JSON only:
 {"verdict": "take"|"reduce"|"skip", "confidence": 0-100, "day_type": "...", "reasons": [{"category": "price"|"vol"|"news"|"calendar"|"book"|"bot_record"|"data", "text": "<= ${ENTRY.maxReasonWords} words"}] (1 to 3), "main_risk": "<= ${ENTRY.maxReasonWords} words", "would_change_mind": "<= ${ENTRY.maxReasonWords} words", "data_ok": true|false}`;
 
-const words = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
-const short = z.string().min(1).refine((s) => words(s) <= ENTRY.maxReasonWords, `at most ${ENTRY.maxReasonWords} words`);
+const words = (s: string) => s.trim().split(/\s+/).filter(Boolean);
+/** Text fields: length is not a reason to drop a call; over-long text is trimmed afterwards and flagged. */
+const short = z.string().trim().min(1);
 
 export const replySchema = z.object({
   verdict: z.enum(VERDICTS),
   confidence: z.number().min(0).max(100),
   day_type: z.enum(DAY_TYPES),
-  reasons: z.array(z.object({ category: z.enum(REASON_CATEGORIES), text: short })).min(1).max(3),
+  reasons: z.array(z.object({ category: z.enum(REASON_CATEGORIES), text: short })).min(1),
   main_risk: short,
   would_change_mind: short,
   data_ok: z.boolean(),
@@ -56,19 +57,49 @@ export const REPLY_JSON_SCHEMA = {
   },
 } as const;
 
-export function parseEntryReply(text: string): EntryReply {
+/** Cut a text field to the word limit, marking the cut with "…". */
+export function trimWords(s: string, max = ENTRY.maxReasonWords): { text: string; trimmed: boolean } {
+  const w = words(s);
+  return w.length <= max ? { text: s.trim(), trimmed: false } : { text: `${w.slice(0, max).join(" ")}…`, trimmed: true };
+}
+
+/**
+ * Parse and validate a reply. Over-long text fields are trimmed to the word limit and more than 3 reasons are
+ * cut to the first 3; the call is kept and the trimmed fields are listed. Anything else invalid throws.
+ */
+export function parseEntryReply(text: string): { reply: EntryReply; trimmed: string[] } {
   const s = text.indexOf("{");
   const e = text.lastIndexOf("}");
   if (s < 0 || e < s) throw new Error("no JSON object in reply");
   const r = replySchema.safeParse(JSON.parse(text.slice(s, e + 1)));
   if (!r.success) throw new Error(`schema: ${r.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
-  return r.data;
+  const trimmed: string[] = [];
+  const cut = (field: string, v: string) => {
+    const t = trimWords(v);
+    if (t.trimmed) trimmed.push(field);
+    return t.text;
+  };
+  const reply = r.data;
+  if (reply.reasons.length > 3) trimmed.push(`reasons (${reply.reasons.length} → 3)`);
+  return {
+    reply: {
+      ...reply,
+      reasons: reply.reasons.slice(0, 3).map((x, i) => ({ ...x, text: cut(`reasons[${i}]`, x.text) })),
+      main_risk: cut("main_risk", reply.main_risk),
+      would_change_mind: cut("would_change_mind", reply.would_change_mind),
+    },
+    trimmed,
+  };
 }
 
 export const renderEntryPrompt = (p: Packet) => `Entry packet (all times ET; bar rows are [time, open, high, low, close]):\n${JSON.stringify(p)}`;
 
 /** Everything that defines a version. */
 export function entryVersionSpec(model: string, effort: string) {
-  return { model, effort, system: ENTRY_SYSTEM_PROMPT, schema: REPLY_JSON_SCHEMA, packetLayout: ENTRY.packetLayout, rules: ENTRY, dayTypes: DAY_TYPE_RULES };
+  return {
+    model, effort, system: ENTRY_SYSTEM_PROMPT, schema: REPLY_JSON_SCHEMA, packetLayout: ENTRY.packetLayout, rules: ENTRY, dayTypes: DAY_TYPE_RULES,
+    // v2: over-long text is trimmed, not an error; bot matching falls back to how bots fill live.
+    replyHandling: "trim-to-limit", liveProfiles: LIVE_PROFILES,
+  };
 }
 export const entryVersionHash = (model: string, effort: string) => sha256(canonicalJson(entryVersionSpec(model, effort)));

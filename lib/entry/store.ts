@@ -73,6 +73,10 @@ export interface CallRow {
   usage: unknown;
   costUsd: number | null;
   vixChangePct: number | null;
+  /** v2: rules | live_profile (oo-trading) | local_profile (this app). */
+  matchSource?: string | null;
+  /** v2: reply fields cut to the word limit. */
+  trimmed?: string[] | null;
 }
 
 /** Append a call; null if this entry was already logged for this version. */
@@ -80,12 +84,12 @@ export async function logCall(c: CallRow): Promise<number | null> {
   const j = (v: unknown) => (v === null || v === undefined ? null : JSON.stringify(v));
   const rows = await q(
     `INSERT INTO entry_calls (version_id, entry_id, bot, match, match_confidence, match_reason, filled_at, detected_at, logged_at, latency_ms, status, status_reason,
-       verdict, confidence, day_type, reply, reply_text, data_ok, packet_complete, packet_hash, packet, model_served, usage, cost_usd, vix_change_pct)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+       verdict, confidence, day_type, reply, reply_text, data_ok, packet_complete, packet_hash, packet, model_served, usage, cost_usd, vix_change_pct, match_source, trimmed)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
      ON CONFLICT (version_id, entry_id) DO NOTHING RETURNING id`,
     [
       c.versionId, c.entryId, c.bot, c.match, c.matchConfidence, c.matchReason, c.filledAt, c.detectedAt, c.loggedAt, c.latencyMs, c.status, c.statusReason,
-      c.verdict, c.confidence, c.dayType, j(c.reply), c.replyText, c.dataOk, c.packetComplete, c.packetHash, j(c.packet), c.modelServed, j(c.usage), c.costUsd, c.vixChangePct,
+      c.verdict, c.confidence, c.dayType, j(c.reply), c.replyText, c.dataOk, c.packetComplete, c.packetHash, j(c.packet), c.modelServed, j(c.usage), c.costUsd, c.vixChangePct, c.matchSource ?? null, c.trimmed?.length ? j(c.trimmed) : null,
     ],
   );
   return rows.length ? Number(rows[0].id) : null;
@@ -120,6 +124,9 @@ export interface CallView {
   packetHash: string | null;
   costUsd: number | null;
   vixChangePct: number | null;
+  matchSource: string | null;
+  matchReason: string | null;
+  trimmed: string[] | null;
 }
 
 const toCall = (r: Record<string, any>): CallView => ({
@@ -127,8 +134,9 @@ const toCall = (r: Record<string, any>): CallView => ({
   filledAt: iso(r.filled_at)!, loggedAt: iso(r.logged_at)!, latencyMs: Number(r.latency_ms), status: r.status, statusReason: r.status_reason,
   verdict: r.verdict, confidence: num(r.confidence), dayType: r.day_type, reply: r.reply, dataOk: r.data_ok, packetComplete: r.packet_complete,
   packetHash: r.packet_hash, costUsd: num(r.cost_usd), vixChangePct: num(r.vix_change_pct),
+  matchSource: r.match_source ?? null, matchReason: r.match_reason ?? null, trimmed: r.trimmed ?? null,
 });
-const CALL_COLS = `id, version_id, entry_id, bot, match, match_confidence, filled_at, logged_at, latency_ms, status, status_reason, verdict, confidence, day_type, reply, data_ok, packet_complete, packet_hash, cost_usd, vix_change_pct`;
+const CALL_COLS = `id, version_id, entry_id, bot, match, match_confidence, filled_at, logged_at, latency_ms, status, status_reason, verdict, confidence, day_type, reply, data_ok, packet_complete, packet_hash, cost_usd, vix_change_pct, match_source, match_reason, trimmed`;
 
 export async function callsForVersion(versionId: number): Promise<CallView[]> {
   return (await q(`SELECT ${CALL_COLS} FROM entry_calls WHERE version_id = $1 ORDER BY filled_at`, [versionId])).map(toCall);
@@ -230,4 +238,24 @@ export async function morningCalls(): Promise<Array<{ date: string; strategy: st
   return (await q(`SELECT date, strategy, call, reason, created_at FROM decisions WHERE source = 'llm' AND call <> 'error'`)).map((r) => ({
     date: dateStr(r.date), strategy: r.strategy, call: r.call, reason: r.reason, createdAt: iso(r.created_at)!,
   }));
+}
+
+// ---------------------------------------------------------------- account net liquidation value
+
+/** Store the NLV readings an export carries (live now, plus each end of day at 16:00 ET). */
+export async function saveNlv(account: OoExport["account"], eodAt: (date: string) => string): Promise<void> {
+  if (!account) return;
+  const rows: Array<[string, number, string]> = account.eod.map((e) => [eodAt(e.date), e.netLiq, "eod"]);
+  if (account.netLiq !== null) rows.push([account.asOf, account.netLiq, "live"]);
+  for (const [at, v, src] of rows) await q(`INSERT INTO entry_nlv (at, net_liq, source) VALUES ($1,$2,$3) ON CONFLICT (at) DO NOTHING`, [at, v, src]);
+}
+
+export interface NlvPoint { at: string; netLiq: number }
+
+/** Latest NLV at or before `at`, and the highest NLV from `since` (ET date, 00:00 UTC-ish bound) up to `at`. */
+export async function nlvAt(at: string, sinceIso: string): Promise<{ current: NlvPoint | null; high: NlvPoint | null }> {
+  const cur = await q(`SELECT at, net_liq FROM entry_nlv WHERE at <= $1 ORDER BY at DESC LIMIT 1`, [at]);
+  const hi = await q(`SELECT at, net_liq FROM entry_nlv WHERE at >= $1 AND at <= $2 ORDER BY net_liq DESC, at LIMIT 1`, [sinceIso, at]);
+  const pt = (r?: Record<string, any>) => (r ? { at: iso(r.at)!, netLiq: Number(r.net_liq) } : null);
+  return { current: pt(cur[0]), high: pt(hi[0]) };
 }
