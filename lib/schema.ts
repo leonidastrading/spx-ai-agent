@@ -102,6 +102,166 @@ CREATE TABLE IF NOT EXISTS settings (
   value jsonb NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- ===================== AI day-trader paper test (Part A) =====================
+
+-- Append-only guard: logged decisions, versions, verdicts and ideas are never edited or deleted.
+CREATE OR REPLACE FUNCTION forbid_change() RETURNS trigger AS $fn$ BEGIN RAISE EXCEPTION 'table % is append-only', TG_TABLE_NAME; END $fn$ LANGUAGE plpgsql;
+
+CREATE TABLE IF NOT EXISTS trader_versions (
+  id serial PRIMARY KEY,
+  hash text NOT NULL UNIQUE,         -- sha256 of model + effort + prompt + schema + rules
+  model text NOT NULL,
+  effort text NOT NULL,
+  spec jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE OR REPLACE TRIGGER trader_versions_ro BEFORE UPDATE OR DELETE ON trader_versions FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE OR REPLACE TRIGGER trader_versions_rot BEFORE TRUNCATE ON trader_versions FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
+
+CREATE TABLE IF NOT EXISTS trader_decisions (
+  id bigserial PRIMARY KEY,
+  version_id int NOT NULL REFERENCES trader_versions(id),
+  slot text NOT NULL,                -- 'YYYY-MM-DD HH:MM' ET (server clock)
+  phase text NOT NULL,               -- premarket | intraday
+  server_ts timestamptz NOT NULL,    -- server clock when logged
+  inputs_hash text,
+  inputs jsonb,
+  reply jsonb,
+  reply_text text,
+  status text NOT NULL,              -- accepted | rejected | hold | no_action | error
+  reason text,
+  model_served text,
+  usage jsonb,
+  cost_usd double precision,
+  data_ok boolean,
+  news_ok boolean,
+  UNIQUE (version_id, slot)
+);
+CREATE OR REPLACE TRIGGER trader_decisions_ro BEFORE UPDATE OR DELETE ON trader_decisions FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE OR REPLACE TRIGGER trader_decisions_rot BEFORE TRUNCATE ON trader_decisions FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
+
+-- Execution records (order ids, fills, exits) for accepted entries.
+CREATE TABLE IF NOT EXISTS trader_trades (
+  id bigserial PRIMARY KEY,
+  version_id int NOT NULL REFERENCES trader_versions(id),
+  decision_id bigint NOT NULL UNIQUE REFERENCES trader_decisions(id),
+  date date NOT NULL,
+  side text NOT NULL,                -- long | short
+  qty integer NOT NULL,
+  ref_price double precision NOT NULL,
+  stop_initial double precision NOT NULL,
+  stop double precision NOT NULL,
+  target double precision NOT NULL,
+  max_hold_minutes integer NOT NULL,
+  confidence double precision NOT NULL,
+  catalyst text NOT NULL,
+  client_order_id text NOT NULL UNIQUE,
+  entry_order_id text,
+  stop_order_id text,
+  target_order_id text,
+  close_order_id text,
+  entry_price double precision,
+  entry_at timestamptz,
+  exit_price double precision,
+  exit_at timestamptz,
+  exit_reason text,                  -- stop | target | time | eod | model
+  status text NOT NULL,              -- submitting | pending | open | closing | closed | failed
+  error text,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS trader_trades_date_idx ON trader_trades (date);
+
+CREATE TABLE IF NOT EXISTS trader_stop_changes (
+  id bigserial PRIMARY KEY,
+  trade_id bigint NOT NULL REFERENCES trader_trades(id),
+  decision_id bigint NOT NULL REFERENCES trader_decisions(id),
+  old_stop double precision NOT NULL,
+  new_stop double precision NOT NULL,
+  at timestamptz NOT NULL DEFAULT now()
+);
+CREATE OR REPLACE TRIGGER trader_stop_changes_ro BEFORE UPDATE OR DELETE ON trader_stop_changes FOR EACH ROW EXECUTE FUNCTION forbid_change();
+
+CREATE TABLE IF NOT EXISTS trader_heartbeats (
+  id bigserial PRIMARY KEY,
+  ts timestamptz NOT NULL DEFAULT now(),
+  minute_et text NOT NULL,
+  status text NOT NULL,              -- ok | skipped | error
+  detail text
+);
+CREATE INDEX IF NOT EXISTS trader_heartbeats_ts_idx ON trader_heartbeats (ts DESC);
+
+CREATE TABLE IF NOT EXISTS trader_alerts (
+  id bigserial PRIMARY KEY,
+  ts timestamptz NOT NULL DEFAULT now(),
+  kind text NOT NULL,
+  message text NOT NULL,
+  emailed boolean NOT NULL DEFAULT false
+);
+
+-- Day flags (e.g. the news feed was down at some point that day).
+CREATE TABLE IF NOT EXISTS trader_days (
+  date date NOT NULL,
+  version_id int NOT NULL REFERENCES trader_versions(id),
+  news_down boolean NOT NULL DEFAULT false,
+  notes text,
+  PRIMARY KEY (date, version_id)
+);
+
+CREATE TABLE IF NOT EXISTS trader_verdicts (
+  version_id int PRIMARY KEY REFERENCES trader_versions(id),
+  verdict text NOT NULL,             -- pass | fail
+  decided_at timestamptz NOT NULL DEFAULT now(),
+  detail jsonb NOT NULL
+);
+CREATE OR REPLACE TRIGGER trader_verdicts_ro BEFORE UPDATE OR DELETE ON trader_verdicts FOR EACH ROW EXECUTE FUNCTION forbid_change();
+
+-- Scheduled economic releases (entered on the Day trader tab; Alpaca has no calendar for these).
+CREATE TABLE IF NOT EXISTS econ_events (
+  id bigserial PRIMARY KEY,
+  date date NOT NULL,
+  time_et text NOT NULL,
+  event text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- Lease so overlapping cron ticks don't act twice.
+CREATE TABLE IF NOT EXISTS trader_lock (
+  key text PRIMARY KEY,
+  until timestamptz NOT NULL
+);
+
+-- ===================== Swing ideas log (Part B) =====================
+
+CREATE TABLE IF NOT EXISTS swing_ideas (
+  id bigserial PRIMARY KEY,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  ticker text NOT NULL,
+  side text NOT NULL,
+  thesis text NOT NULL,
+  catalyst text NOT NULL,
+  speculative boolean NOT NULL,
+  notional double precision NOT NULL,
+  exit_rule text NOT NULL,           -- target | trailing | time
+  exit_param double precision NOT NULL,
+  ref_price double precision NOT NULL
+);
+CREATE OR REPLACE TRIGGER swing_ideas_ro BEFORE UPDATE OR DELETE ON swing_ideas FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE OR REPLACE TRIGGER swing_ideas_rot BEFORE TRUNCATE ON swing_ideas FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
+
+CREATE TABLE IF NOT EXISTS swing_events (
+  id bigserial PRIMARY KEY,
+  idea_id bigint NOT NULL REFERENCES swing_ideas(id),
+  kind text NOT NULL,
+  order_id text,
+  price double precision,
+  qty integer,
+  spy_price double precision,
+  at timestamptz NOT NULL DEFAULT now(),
+  detail text
+);
+CREATE OR REPLACE TRIGGER swing_events_ro BEFORE UPDATE OR DELETE ON swing_events FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE OR REPLACE TRIGGER swing_events_rot BEFORE TRUNCATE ON swing_events FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
 `;
 
 /** Split into single statements (the HTTP driver runs one statement per query). */

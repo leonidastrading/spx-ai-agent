@@ -1,6 +1,6 @@
 /** Postgres access (Neon serverless driver; works with Vercel Postgres / Neon URLs). */
 
-import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import { neon } from "@neondatabase/serverless";
 import type { Bar, NewsItem } from "./alpaca";
 import type { StrategyCall } from "./decision";
 import type { Features } from "./features";
@@ -8,19 +8,33 @@ import type { Outcome } from "./optionomega";
 import { schemaStatements } from "./schema";
 import { mergeSettings, type Settings } from "./settings";
 
-let cached: NeonQueryFunction<false, false> | null = null;
+type Row = Record<string, any>;
 
-export function db(): NeonQueryFunction<false, false> {
+/** The one capability the app needs from a Postgres driver. */
+export interface Querier {
+  query(text: string, params?: unknown[]): Promise<Row[]>;
+}
+
+let cached: Querier | null = null;
+
+export function db(): Querier {
   if (!cached) {
     const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
     if (!url) throw new Error("DATABASE_URL is not set");
-    cached = neon(url);
+    const sql = neon(url);
+    cached = { query: (text, params = []) => sql.query(text, params) as Promise<Row[]> };
   }
   return cached;
 }
 
+/** Tests: run against another driver (e.g. PGlite). */
+export function setQuerierForTests(q: Querier | null): void {
+  cached = q;
+  schemaReady = null;
+}
+
 export function hasDatabase(): boolean {
-  return !!(process.env.DATABASE_URL ?? process.env.POSTGRES_URL);
+  return cached !== null || !!(process.env.DATABASE_URL ?? process.env.POSTGRES_URL);
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -38,11 +52,12 @@ function ensureSchema(): Promise<void> {
   return schemaReady;
 }
 
-type Row = Record<string, any>;
-const q = async (text: string, params: unknown[] = []) => {
+/** Run a query after making sure the schema exists. */
+export const query = async (text: string, params: unknown[] = []): Promise<Row[]> => {
   await ensureSchema();
-  return (await db().query(text, params)) as Row[];
+  return db().query(text, params);
 };
+const q = query;
 
 const CHUNK = 2000;
 

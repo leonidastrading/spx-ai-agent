@@ -38,11 +38,18 @@ describe("shadow mode: read-only endpoint allowlist", () => {
     };
     walk(root);
     expect(files.length).toBeGreaterThan(10);
+    const broker = path.join(root, "lib", "paper-broker.ts");
     for (const f of files) {
       const src = readFileSync(f, "utf8");
+      expect(src.toLowerCase(), f).not.toContain("schwab");
+      if (f === broker) continue;
+      // Only the paper broker may talk to order/position/account endpoints or send non-GET requests to Alpaca.
       expect(src, f).not.toMatch(/\/v2\/(orders|positions|account)\b/);
       if (src.includes("alpaca.markets")) expect(src, f).not.toMatch(/method:\s*"(POST|PUT|PATCH|DELETE)"/);
     }
+    const brokerSrc = readFileSync(broker, "utf8");
+    expect(brokerSrc).toContain('"https://paper-api.alpaca.markets"');
+    expect(brokerSrc).not.toMatch(/https:\/\/api\.alpaca\.markets/);
   });
 });
 

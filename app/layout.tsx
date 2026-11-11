@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Book Advisor",
-  description: "Shadow-mode morning run/reduce/skip advisor for SPX strategies. Never trades.",
+  description: "Shadow-mode SPX book advisor, plus paper-only AI day-trader and swing-ideas tests.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -16,8 +16,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Link href="/dashboard">Dashboard</Link>
           <Link href="/scoring">Scoring</Link>
           <Link href="/upload">Upload P/L</Link>
+          <Link href="/trader">Day trader</Link>
+          <Link href="/swing">Swing ideas</Link>
           <Link href="/settings">Settings</Link>
-          <span className="shadow">Shadow mode · never places orders</span>
+          <span className="shadow">Advisor: shadow mode · Trader &amp; swing: paper only</span>
         </nav>
         <main>{children}</main>
       </body>

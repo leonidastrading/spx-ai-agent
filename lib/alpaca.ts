@@ -18,7 +18,7 @@ export const PAPER_TRADING_HOST = "https://paper-api.alpaca.markets";
 
 const REFERENCE_PATHS = [/^\/v2\/calendar$/, /^\/v2\/clock$/];
 const ALLOWED: Record<string, RegExp[]> = {
-  [DATA_HOST]: [/^\/v2\/stocks\/bars$/, /^\/v1beta1\/news$/],
+  [DATA_HOST]: [/^\/v2\/stocks\/bars$/, /^\/v1beta1\/news$/, /^\/v2\/stocks\/quotes\/latest$/],
   [TRADING_HOST]: REFERENCE_PATHS,
   [PAPER_TRADING_HOST]: REFERENCE_PATHS,
 };
@@ -219,6 +219,18 @@ export class AlpacaClient {
     return out;
   }
 
+  /** Latest NBBO quote per symbol (bid/ask/timestamp). */
+  async getLatestQuotes(symbols: readonly string[], feed: Feed): Promise<Record<string, Quote>> {
+    const resp = await this.get<{ quotes: Record<string, { t: string; bp: number; ap: number; bs: number; as: number }> }>(
+      DATA_HOST,
+      "/v2/stocks/quotes/latest",
+      { symbols: symbols.join(","), feed },
+    );
+    const out: Record<string, Quote> = {};
+    for (const [sym, q] of Object.entries(resp.quotes ?? {})) out[sym] = { ts: new Date(q.t).toISOString(), bid: q.bp, ask: q.ap };
+    return out;
+  }
+
   // ------------------------------------------------------------- calendar
 
   async getCalendar(start: string, end: string): Promise<Session[]> {
@@ -267,6 +279,12 @@ export function parseBarsResponse(resp: RawBarsResponse, feed: Feed): Bar[] {
     }
   }
   return out;
+}
+
+export interface Quote {
+  ts: string;
+  bid: number;
+  ask: number;
 }
 
 export interface NewsItem {
