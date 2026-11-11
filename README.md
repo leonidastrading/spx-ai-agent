@@ -251,8 +251,10 @@ by code (`config/trader.ts`, `lib/trader/rules.ts`), never by the model.
 
 - **Saving an idea.** Each idea has a ticker, direction, thesis, catalyst (news, panic dip, theme or earnings),
   size, a speculative flag, and one exit rule chosen at entry: a price target, a trailing stop (%) or a time limit
-  (days). Saving checks the sleeve limits and sends a paper market order. The entry price is the fill. If the
-  market is closed, the order is queued for the open.
+  (days). Saving checks the sleeve limits and sends a paper market order on the sleeve's own paper account. The
+  entry price is the fill. If the market is closed, the order is queued for the open. Only one live idea per
+  ticker is allowed (Alpaca nets positions per symbol), and a ticker the account already holds from outside the
+  log is refused.
 - **Sleeve limits.** The sleeve is $100,000. No idea may be above $10,000, and speculative ideas may total at most
   $5,000. QQQ, leveraged and inverse funds, and anything Alpaca can't trade (or can't easily borrow, for shorts)
   are refused.
