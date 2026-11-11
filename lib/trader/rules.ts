@@ -80,6 +80,8 @@ export interface DayState {
   closedToday: ClosedTrade[];
   gateFailed: boolean;
   enabled: boolean;
+  /** Why trading is disabled, when it is (default: "trading disabled"). */
+  disabledReason?: string;
 }
 
 /** Realized loss limit and losing-streak stop. */
@@ -95,7 +97,7 @@ const minutesEt = (now: Date) => toEt(now).minutes;
 
 /** Why a new entry is not allowed right now, or null if it is. */
 export function entryBlocked(now: Date, s: DayState): string | null {
-  if (!s.enabled) return "trading disabled";
+  if (!s.enabled) return s.disabledReason ?? "trading disabled";
   if (s.gateFailed) return "decision gate failed for this version";
   const m = minutesEt(now);
   if (m < hhmmToMinutes(TRADER.firstEntry)) return `before ${TRADER.firstEntry} ET`;

@@ -1,3 +1,4 @@
+import PaperAccount from "@/components/PaperAccount";
 import SetupNotice from "@/components/SetupNotice";
 import { SWING } from "@/config/trader";
 import { AlpacaClient, credsFromEnv, referenceHostFromEnv } from "@/lib/alpaca";
@@ -45,6 +46,7 @@ export default async function SwingPage() {
         Your own ideas, written down with an exit rule before entry, scored against SPY. Paper sleeve {usd(SWING.sleeve)} on the Alpaca paper account; no position above{" "}
         {SWING.maxPositionFraction * 100}% ({usd(SWING.sleeve * SWING.maxPositionFraction)}), speculative ideas at most {SWING.maxSpeculativeFraction * 100}% in total. Ideas are
         locked once saved; exits follow the stated rule automatically. No margin, leverage, leveraged funds or options; QQQ is reserved for the day trader.
+        <PaperAccount part="swing" />
       </section>
 
       <section className="card">

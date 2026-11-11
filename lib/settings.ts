@@ -159,6 +159,8 @@ export function envStatus(env: Record<string, string | undefined> = process.env)
     { group: "Email (optional)", key: "ALERT_EMAIL", set: has("ALERT_EMAIL"), required: false },
     { group: "Email (optional)", key: "ALERT_FROM", set: has("ALERT_FROM"), required: false },
     { group: "Access", key: "DASHBOARD_USER / DASHBOARD_PASSWORD", set: has("DASHBOARD_USER") && has("DASHBOARD_PASSWORD"), required: true },
+    { group: "Paper accounts (trader / swing)", key: "TRADER_ALPACA_KEY_ID / TRADER_ALPACA_SECRET_KEY", set: has("TRADER_ALPACA_KEY_ID") && has("TRADER_ALPACA_SECRET_KEY"), required: false, value: has("TRADER_ALPACA_KEY_ID") ? "" : "day trader can't trade" },
+    { group: "Paper accounts (trader / swing)", key: "SWING_ALPACA_KEY_ID / SWING_ALPACA_SECRET_KEY", set: has("SWING_ALPACA_KEY_ID") && has("SWING_ALPACA_SECRET_KEY"), required: false, value: has("SWING_ALPACA_KEY_ID") ? "" : "swing ideas can't be saved" },
     { group: "Access", key: "CRON_SECRET", set: has("CRON_SECRET"), required: true },
   ];
 }

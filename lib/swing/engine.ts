@@ -39,6 +39,13 @@ export async function submitIdea(raw: unknown, deps: { data: DataClient; broker:
   const active = ideas.filter((i) => ["pending_entry", "open", "closing"].includes(states.get(i.id)!.status));
   const problems = sleeveProblems(input, active, ref);
   if (problems.length) return { ok: false, errors: problems };
+  // The sleeve's account should only hold what this log opened.
+  if (!active.some((i) => i.ticker === input.ticker)) {
+    const pos = await deps.broker().getPosition(input.ticker);
+    if (pos && Number(pos.qty) !== 0) return { ok: false, errors: [`the swing paper account already holds ${pos.qty} ${input.ticker} that this log didn't open`] };
+  } else {
+    return { ok: false, errors: [`${input.ticker} already has a live idea; one idea per ticker at a time`] };
+  }
 
   const idea = await ts.addIdea(input, Math.round(ref * 100) / 100);
   const qty = Math.floor(input.notional / ref);

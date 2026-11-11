@@ -1,4 +1,5 @@
 import Link from "next/link";
+import PaperAccount from "@/components/PaperAccount";
 import SetupNotice from "@/components/SetupNotice";
 import { TRADER } from "@/config/trader";
 import * as store from "@/lib/db";
@@ -40,6 +41,7 @@ export default async function TraderPage() {
         <b>Paper only.</b> Orders go to the Alpaca <b>paper</b> account (paper-api.alpaca.markets) and nowhere else: QQQ shares, ${TRADER.notional.toLocaleString()} per trade, one position,
         at most {TRADER.maxTradesPerDay} trades a day, entries {TRADER.firstEntry}–{TRADER.lastEntry} ET, flat by {TRADER.flatBy}. The question is a yes/no on forward results; nothing here is back-tested.
         {" "}<Link href="/trader/scoring">Scoring and decision gate →</Link>
+        <PaperAccount part="trader" />
       </section>
 
       {verdict && (

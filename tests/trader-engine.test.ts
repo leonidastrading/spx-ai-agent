@@ -87,6 +87,8 @@ let modelCalls = 0;
 const deps: TraderDeps = {
   data,
   broker: () => broker,
+  swingBroker: () => broker,
+  ready: { trader: true, swing: true },
   callModel: async () => {
     modelCalls++;
     return { text: replies.shift() ?? "{}", stopReason: "end_turn", modelServed: "test-model", usage: { input_tokens: 1000, output_tokens: 200 }, costUsd: 0.008 };
@@ -219,8 +221,19 @@ describe("trader engine, one morning", () => {
     expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: "trading disabled" });
   });
 
+  it("without its own paper account the trader logs decisions but never enters", async () => {
+    await ts.saveTraderSettings({ enabled: true, model: "claude-sonnet-5-5", effort: "medium" });
+    deps.ready.trader = false;
+    replies.push(reply({ action: "long", stop: 439, target: 441.5, max_hold_minutes: 30 }));
+    const before = brokerCalls.length;
+    await tick("10:35");
+    expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: expect.stringMatching(/no paper account of its own/) });
+    expect(brokerCalls.length).toBe(before);
+    deps.ready.trader = true;
+  });
+
   it("heartbeat every tick; off-hours ticks do nothing", async () => {
-    expect((await ts.lastHeartbeat())?.minuteEt).toBe("2024-03-11 10:30");
+    expect((await ts.lastHeartbeat())?.minuteEt).toBe("2024-03-11 10:35");
     const r = await tick("16:30");
     expect(r.status).toBe("skipped");
   });

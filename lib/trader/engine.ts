@@ -9,7 +9,7 @@ import { TRADER } from "@/config/trader";
 import { AlpacaClient, credsFromEnv, referenceHostFromEnv, type Feed } from "../alpaca";
 import * as store from "../db";
 import { sendEmail } from "../email";
-import { PaperBroker } from "../paper-broker";
+import { PaperBroker, brokerConfigured, brokerCredsFromEnv } from "../paper-broker";
 import { addDays, etToUtc, hhmmToMinutes, priorSession, sessionOn, toEt, type Session } from "../time";
 import { callTraderModel, type CallModel } from "./llm";
 import { buildInputs, hashInputs, renderUserPrompt, versionHash, versionSpec } from "./prompt";
@@ -26,7 +26,12 @@ export type Broker = Pick<
 
 export interface TraderDeps {
   data: DataClient;
+  /** The trader's own paper account. */
   broker: () => Broker;
+  /** The swing sleeve's own (different) paper account. */
+  swingBroker: () => Broker;
+  /** Which parts have their own paper keys configured. */
+  ready: { trader: boolean; swing: boolean };
   callModel: CallModel;
   sleep: (ms: number) => Promise<void>;
   /** Server clock. */
@@ -38,9 +43,12 @@ export interface TraderDeps {
 export function defaultDeps(): TraderDeps {
   const creds = credsFromEnv();
   let broker: PaperBroker | null = null;
+  let swingBroker: PaperBroker | null = null;
   return {
     data: new AlpacaClient({ creds, referenceHost: referenceHostFromEnv(), maxRetries: 3, maxPerMinute: Number(process.env.ALPACA_MAX_RPM) || undefined }),
-    broker: () => (broker ??= new PaperBroker(creds)),
+    broker: () => (broker ??= new PaperBroker(brokerCredsFromEnv("trader"))),
+    swingBroker: () => (swingBroker ??= new PaperBroker(brokerCredsFromEnv("swing"))),
+    ready: { trader: brokerConfigured("trader"), swing: brokerConfigured("swing") },
     callModel: callTraderModel,
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     clock: () => new Date(),
@@ -105,7 +113,7 @@ export async function runTraderTick(deps: TraderDeps = defaultDeps()): Promise<T
       await decide({ now, session, prior, slot, version, cfg, feed, newsOk, deps, notes });
     }
 
-    await syncSwing(now, session, deps, feed, notes);
+    if (deps.ready.swing) await syncSwing(now, session, { data: deps.data, broker: deps.swingBroker }, feed, notes);
 
     if (et.minutes >= hhmmToMinutes(TRADER.flatBy) + 1) await endOfDayGate(version, deps, notes);
 
@@ -170,7 +178,7 @@ async function ingest(deps: TraderDeps, feed: Feed, prior: Session, end: Date, n
 
 // ---------------------------------------------------------------- decisions
 
-async function dayState(date: string, enabled: boolean, versionId: number): Promise<DayState> {
+async function dayState(date: string, enabled: boolean, versionId: number, disabledReason?: string): Promise<DayState> {
   const today = await ts.tradesForDate(date);
   const active = await ts.activeTrades();
   const open = active.find((t) => t.status === "open" || t.status === "pending" || t.status === "submitting" || t.status === "closing") ?? null;
@@ -181,6 +189,7 @@ async function dayState(date: string, enabled: boolean, versionId: number): Prom
     closedToday: today.map(ts.toClosed).filter((c): c is NonNullable<typeof c> => c !== null).sort((a, b) => a.exitAt.localeCompare(b.exitAt)),
     gateFailed: verdict?.verdict === "fail",
     enabled,
+    disabledReason,
   };
 }
 
@@ -224,7 +233,12 @@ async function decide(a: {
     }
   }
 
-  const state = await dayState(session.date, a.cfg.enabled, version.id);
+  const state = await dayState(
+    session.date,
+    a.cfg.enabled && deps.ready.trader,
+    version.id,
+    a.cfg.enabled && !deps.ready.trader ? "trader has no paper account of its own (TRADER_ALPACA_KEY_ID not set)" : undefined,
+  );
   const blocked = slot.phase === "premarket" ? "pre-market read: no orders" : entryBlocked(evalNow, state);
   const [bars15, bars1d] = await Promise.all([
     deps.data.getBars({ symbols: [sym], start: etToUtc(addDays(session.date, -8), "04:00"), end: new Date(lastClosed + 60000), feed: a.feed, timeframe: "15Min" }),

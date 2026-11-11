@@ -220,16 +220,32 @@ by code (`config/trader.ts`, `lib/trader/rules.ts`), never by the model.
 
 ### Turning it on
 
-1. Make sure `ALPACA_PAPER=true` is set and the Alpaca keys are paper keys (`PK…`).
-2. Optionally, use a dedicated Alpaca paper account. The trader won't enter if the account already holds QQQ it
-   didn't open.
-3. Add a second cron-job.org job:
+1. **Give each part its own Alpaca paper account.** Create two extra paper accounts in the Alpaca dashboard
+   (they're free): one for the trader and one for the swing sleeve. Don't use the account any other bot trades.
+   For example, a bot that closes everything at 3:57 PM would close the swing ideas every afternoon. Put the keys
+   in Vercel as `TRADER_ALPACA_KEY_ID` / `TRADER_ALPACA_SECRET_KEY` and `SWING_ALPACA_KEY_ID` /
+   `SWING_ALPACA_SECRET_KEY`, keep `ALPACA_PAPER=true`, and redeploy. There's no fallback to `ALPACA_API_KEY_ID`,
+   which is only used for market data and news. The app refuses if both parts share one key. Each tab shows the
+   account number it trades, so check it against the Alpaca dashboard.
+2. Add a second cron-job.org job:
    - URL: `https://<your-domain>/api/cron/trader`
    - Schedule: every minute, hours 9–15 plus 16:00, Monday–Friday, America/New_York.
-   - Headers: the same `Authorization: Bearer <CRON_SECRET>` and `x-vercel-protection-bypass` as the advisor
-     job, with the timeout at its maximum.
-4. Enter the week's economic releases on the Day trader tab.
-5. Switch on "Paper trading" there.
+   - Headers: the same `Authorization: Bearer <CRON_SECRET>` and `x-vercel-protection-bypass` as the advisor job.
+   - Timeout at its maximum, and **failure emails on**: nothing inside the app can notice if the scheduler
+     itself stops.
+3. Enter the week's economic releases on the Day trader tab.
+4. Run one full day with trading **off**. Look at the decision log, the "no action: bad data" count and the
+   LLM cost.
+5. Switch on "Paper trading" the day after, if the day looked clean, and check the first live morning around
+   09:40 ET.
+
+**Reading the results honestly.**
+- **The free IEX feed** carries a small share of QQQ's volume. Some minutes have no bar, and prices can sit
+  slightly off the wider market. If "no action: bad data" is frequent, the test needs Alpaca's paid SIP feed
+  (`ALPACA_FEED=sip`) to mean anything.
+- **Paper fills are generous:** at the quote, with no queue. The $0.01/share slippage covers only part of
+  that, so treat a marginal Pass as a Fail.
+- **Missed releases:** if you forget to enter a CPI or Fed day, the model trades through it blind.
 
 ## Swing ideas log (Part B)
 
@@ -272,6 +288,8 @@ Fill in `.env.local` (never commit it; `.env*` is git-ignored except `.env.examp
 | `ALERT_FROM` | no | verified Resend sender, default `Book advisor <onboarding@resend.dev>` |
 | `DASHBOARD_USER`, `DASHBOARD_PASSWORD` | yes | basic auth for all pages |
 | `CRON_SECRET` | yes | Vercel sends `Authorization: Bearer $CRON_SECRET` to the cron route |
+| `TRADER_ALPACA_KEY_ID`, `TRADER_ALPACA_SECRET_KEY` | for the day trader | the trader's **own** Alpaca paper account (paper keys only) |
+| `SWING_ALPACA_KEY_ID`, `SWING_ALPACA_SECRET_KEY` | for swing ideas | the swing sleeve's own paper account, different from the trader's |
 | `APP_URL` | no | used for the dashboard link in the email (defaults to the Vercel production URL) |
 
 Tables are created automatically the first time the app touches the database. To create them up front

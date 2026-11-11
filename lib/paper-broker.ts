@@ -35,6 +35,39 @@ export function assertPaperRequest(method: string, path: string): void {
   }
 }
 
+export type BrokerPart = "trader" | "swing";
+
+const KEY_VARS: Record<BrokerPart, [string, string]> = {
+  trader: ["TRADER_ALPACA_KEY_ID", "TRADER_ALPACA_SECRET_KEY"],
+  swing: ["SWING_ALPACA_KEY_ID", "SWING_ALPACA_SECRET_KEY"],
+};
+
+/**
+ * Keys for one part's own paper account. There is deliberately no fallback to
+ * ALPACA_API_KEY_ID: that key may belong to another bot's paper account (whose
+ * end-of-day sweep would close these positions). The trader and the swing
+ * sleeve must also use different accounts.
+ */
+export function brokerCredsFromEnv(part: BrokerPart, env: Record<string, string | undefined> = process.env): AlpacaCreds {
+  const [idVar, secretVar] = KEY_VARS[part];
+  const keyId = env[idVar]?.trim();
+  const secretKey = env[secretVar]?.trim();
+  if (!keyId || !secretKey) throw new Error(`${idVar} / ${secretVar} are not set: give the ${part} its own Alpaca paper account`);
+  const other = env[KEY_VARS[part === "trader" ? "swing" : "trader"][0]]?.trim();
+  if (other && other === keyId) throw new Error("The trader and the swing sleeve must use different Alpaca paper accounts (same key ID set for both)");
+  return { keyId, secretKey };
+}
+
+/** Whether a part has its own paper keys configured (and they pass the paper checks). */
+export function brokerConfigured(part: BrokerPart, env: Record<string, string | undefined> = process.env): boolean {
+  try {
+    assertPaperKeys(brokerCredsFromEnv(part, env), env);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Throws unless the environment is explicitly paper. Exported for tests. */
 export function assertPaperKeys(creds: AlpacaCreds, env: Record<string, string | undefined> = process.env): void {
   if (env.ALPACA_PAPER !== "true") throw new Error("Paper trading refused: ALPACA_PAPER is not \"true\"");
@@ -97,7 +130,7 @@ export class PaperBroker {
   }
 
   getAccount() {
-    return this.request<{ status: string; equity: string; buying_power: string; trading_blocked: boolean }>("GET", "/v2/account");
+    return this.request<{ account_number: string; status: string; equity: string; buying_power: string; trading_blocked: boolean }>("GET", "/v2/account");
   }
 
 /** Open position in a symbol on the paper account, or null. */
@@ -188,4 +221,23 @@ export class PaperBroker {
 
 function round2(x: number): number {
   return Math.round(x * 100) / 100;
+}
+
+/** What the tabs show about a part's paper account (never the keys). */
+export async function paperAccountSummary(
+  part: BrokerPart,
+): Promise<{ configured: false; reason: string } | { configured: true; accountNumber: string; equity: number; status: string } | { configured: true; error: string }> {
+  let creds: AlpacaCreds;
+  try {
+    creds = brokerCredsFromEnv(part);
+    assertPaperKeys(creds);
+  } catch (err) {
+    return { configured: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+  try {
+    const a = await new PaperBroker(creds).getAccount();
+    return { configured: true, accountNumber: a.account_number, equity: Number(a.equity), status: a.status };
+  } catch (err) {
+    return { configured: true, error: err instanceof Error ? err.message : String(err) };
+  }
 }

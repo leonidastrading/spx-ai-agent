@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { checkBasicAuth } from "@/lib/auth";
 import { hasDatabase } from "@/lib/db";
+import { brokerConfigured } from "@/lib/paper-broker";
 import { loadTraderSettings, saveTraderSettings } from "@/lib/trader/store";
 
 export const runtime = "nodejs";
@@ -19,6 +20,9 @@ export async function PUT(request: Request) {
   if (!hasDatabase()) return NextResponse.json({ error: "database not connected" }, { status: 503 });
   const r = schema.safeParse(await request.json().catch(() => null));
   if (!r.success) return NextResponse.json({ error: r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ") }, { status: 422 });
+  if (r.data.enabled && !brokerConfigured("trader")) {
+    return NextResponse.json({ error: "The trader has no paper account of its own yet: set TRADER_ALPACA_KEY_ID / TRADER_ALPACA_SECRET_KEY (a separate Alpaca paper account) and redeploy." }, { status: 422 });
+  }
   await saveTraderSettings(r.data);
   return NextResponse.json({ settings: await loadTraderSettings() });
 }

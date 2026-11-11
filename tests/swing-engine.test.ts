@@ -88,6 +88,12 @@ describe("swing ideas end to end", () => {
     expect(await submitIdea(idea({ ticker: "QQQ" }), deps)).toMatchObject({ ok: false });
   });
 
+  it("one live idea per ticker; refuses tickers the account holds from outside the log", async () => {
+    expect(await submitIdea(idea({ ticker: "MSFT" }), deps)).toMatchObject({ ok: false, errors: [expect.stringMatching(/already has a live idea/)] });
+    const held = { ...deps, broker: () => ({ ...broker, getPosition: async () => ({ qty: "40", side: "long" }) }) };
+    expect(await submitIdea(idea({ ticker: "NVDA" }), held)).toMatchObject({ ok: false, errors: [expect.stringMatching(/already holds 40 NVDA/)] });
+  });
+
   it("ideas and their events are locked", async () => {
     await expect(pg.query(`UPDATE swing_ideas SET thesis = 'edited'`)).rejects.toThrow(/append-only/);
     await expect(pg.query(`DELETE FROM swing_events`)).rejects.toThrow(/append-only/);
