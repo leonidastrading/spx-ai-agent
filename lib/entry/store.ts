@@ -33,16 +33,24 @@ export interface EntryVersion {
   model: string;
   effort: string;
   createdAt: string;
+  /** 1, 2, 3… in creation order (ids skip numbers, so they are not shown). */
+  number: number;
 }
-const toVersion = (r: Record<string, any>): EntryVersion => ({ id: Number(r.id), hash: r.hash, model: r.model, effort: r.effort, createdAt: iso(r.created_at)! });
+const toVersion = (r: Record<string, any>): EntryVersion => ({ id: Number(r.id), hash: r.hash, model: r.model, effort: r.effort, createdAt: iso(r.created_at)!, number: Number(r.number ?? r.id) });
 
 export async function ensureEntryVersion(hash: string, model: string, effort: string, spec: unknown): Promise<EntryVersion> {
-  await q(`INSERT INTO entry_versions (hash, model, effort, spec) VALUES ($1,$2,$3,$4) ON CONFLICT (hash) DO NOTHING`, [hash, model, effort, JSON.stringify(spec)]);
-  return toVersion((await q(`SELECT * FROM entry_versions WHERE hash = $1`, [hash]))[0]);
+  const sel = () => q(`SELECT *, (SELECT count(*) FROM entry_versions o WHERE o.id <= entry_versions.id) AS number FROM entry_versions WHERE hash = $1`, [hash]);
+  // Look first: an INSERT ... ON CONFLICT uses up an id even when the row exists, on every tick.
+  let rows = await sel();
+  if (!rows.length) {
+    await q(`INSERT INTO entry_versions (hash, model, effort, spec) VALUES ($1,$2,$3,$4) ON CONFLICT (hash) DO NOTHING`, [hash, model, effort, JSON.stringify(spec)]);
+    rows = await sel();
+  }
+  return toVersion(rows[0]);
 }
 
 export async function listEntryVersions(): Promise<EntryVersion[]> {
-  return (await q(`SELECT * FROM entry_versions ORDER BY id`)).map(toVersion);
+  return (await q(`SELECT *, (SELECT count(*) FROM entry_versions o WHERE o.id <= entry_versions.id) AS number FROM entry_versions ORDER BY id`)).map(toVersion);
 }
 
 // ---------------------------------------------------------------- calls

@@ -103,7 +103,8 @@ const callSchema = z.object({
 
 export const llmOutputSchema = z.object({
   market_read: z.string().min(1),
-  strategies: z.record(z.string(), callSchema),
+  // A list of calls (current shape); an object keyed by strategy name is still accepted.
+  strategies: z.union([z.array(callSchema.extend({ strategy: z.string().min(1) })), z.record(z.string(), callSchema)]),
 });
 
 export interface LlmDecision {
@@ -111,18 +112,12 @@ export interface LlmDecision {
   calls: StrategyCall[];
 }
 
-/** JSON schema for structured output (keeps the model on the exact keys). */
+/**
+ * JSON schema for structured output. The calls are a list (strategy name from an enum), so the schema's size
+ * doesn't grow with the number of strategies; that every strategy is answered exactly once is checked in code.
+ * (An object with one required key per strategy compiled into a grammar too large for the API at 18 strategies.)
+ */
 export function llmJsonSchema(names: string[] = STRATEGY_NAMES): Record<string, unknown> {
-  const callObj = {
-    type: "object",
-    additionalProperties: false,
-    required: ["call", "confidence", "reason"],
-    properties: {
-      call: { type: "string", enum: ["run", "reduce", "skip"] },
-      confidence: { type: "number" },
-      reason: { type: "string" },
-    },
-  };
   return {
     type: "object",
     additionalProperties: false,
@@ -130,10 +125,18 @@ export function llmJsonSchema(names: string[] = STRATEGY_NAMES): Record<string, 
     properties: {
       market_read: { type: "string" },
       strategies: {
-        type: "object",
-        additionalProperties: false,
-        required: names,
-        properties: Object.fromEntries(names.map((n) => [n, callObj])),
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["strategy", "call", "confidence", "reason"],
+          properties: {
+            strategy: { type: "string", enum: names },
+            call: { type: "string", enum: ["run", "reduce", "skip"] },
+            confidence: { type: "number" },
+            reason: { type: "string" },
+          },
+        },
       },
     },
   };
@@ -156,7 +159,17 @@ function extractJson(text: string): unknown {
 export function parseLlmOutput(text: string, names: string[] = STRATEGY_NAMES): LlmDecision {
   const parsed = llmOutputSchema.safeParse(extractJson(text));
   if (!parsed.success) throw new Error(`schema: ${parsed.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
-  const got = parsed.data.strategies;
+  const raw = parsed.data.strategies;
+  let got: Record<string, z.infer<typeof callSchema>>;
+  if (Array.isArray(raw)) {
+    got = {};
+    const dup = new Set<string>();
+    for (const { strategy, ...c } of raw) {
+      if (strategy in got) dup.add(strategy);
+      got[strategy] = c;
+    }
+    if (dup.size) throw new Error(`strategies answered twice: ${[...dup].join(", ")}`);
+  } else got = raw;
   const missing = names.filter((n) => !(n in got));
   const unknown = Object.keys(got).filter((k) => !names.includes(k));
   if (missing.length) throw new Error(`missing strategies: ${missing.join(", ")}`);
@@ -185,8 +198,8 @@ Context:
 - You are advising in shadow mode; no orders are placed from your output.
 
 Answer with JSON only, no prose outside it, matching this shape:
-{"market_read": "<one paragraph>", "strategies": {"<strategy name>": {"call": "run"|"reduce"|"skip", "confidence": <0-1>, "reason": "<one sentence>"}}}
-Use exactly the strategy names given, all of them.`;
+{"market_read": "<one paragraph>", "strategies": [{"strategy": "<strategy name>", "call": "run"|"reduce"|"skip", "confidence": <0-1>, "reason": "<one sentence>"}, ...]}
+One entry per strategy, using exactly the strategy names given, all of them, each once.`;
 
 export function buildUserPrompt(p: PromptInput): string {
   const strategies = (p.strategies ?? STRATEGIES).map((s) => `- ${s.name} — entry ${s.entryEt} ET — ${s.description}`).join("\n");

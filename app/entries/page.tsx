@@ -46,7 +46,7 @@ export default async function EntriesPage() {
       </section>
 
       <section className="card">
-        <h2>Version {current ? `v${current.id}` : "(created on the next tick)"}: {model}, effort {cfg.effort}</h2>
+        <h2>Version {current ? `v${current.number}` : "(created on the next tick)"}: {model}, effort {cfg.effort}</h2>
         <p className="small secondary">Model, prompt, reply schema, packet layout and rules are frozen per version ({current ? <code>{current.hash.slice(0, 12)}</code> : "hash pending"}). Don’t tune the prompt on results of the version being scored. The model never sees its own earlier calls.</p>
         <EntryControls enabled={cfg.enabled} model={cfg.model} effort={cfg.effort} defaultModel={ENTRY.defaultModel} />
       </section>

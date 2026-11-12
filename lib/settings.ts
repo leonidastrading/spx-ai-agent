@@ -138,21 +138,31 @@ export function mergeSettings(stored: unknown): Settings {
   return v.ok ? v.settings : DEFAULT_SETTINGS;
 }
 
+/** The default bots a user may already have under their own names (e.g. "2DTE<20", "3Δ 4DTE"). */
+const EQUIVALENT: Record<string, RegExp> = {
+  "2DTE VIX<20": /2\s*dte.*<\s*20/i,
+  "2DTE VIX>20": /2\s*dte.*>\s*=?\s*20/i,
+  "VIX-up VIX<20": /vix[\s-]*up.*<\s*20/i,
+  "VIX-up VIX>20": /vix[\s-]*up.*>\s*=?\s*20/i,
+  "3 Delta": /3\s*(Δ|delta)/i,
+};
+
 /**
- * Saved settings from before the VIX split list "2DTE" and "VIX-up". Replace
- * them with the four split bots (and add 3 Delta), keeping every other edit;
- * Option Omega mappings that pointed at the retired names are dropped.
+ * Saved settings from before the VIX split list "2DTE" and "VIX-up". Drop those, and add the split bots and
+ * 3 Delta only where the user has no bot of their own for them (e.g. "2DTE<20" counts as "2DTE VIX<20").
+ * Also removes a default-named copy that an earlier migration added next to the user's own name. Every other
+ * edit is kept; Option Omega mappings that pointed at a removed name are dropped.
  */
 export function migrateLegacyBots(strategies: StrategyDef[], ooMap: Record<string, string>) {
-  const names = strategies.map((x) => x.name);
-  if (!names.some((n) => LEGACY_STRATEGIES.includes(n))) return { strategies, ooMap };
-  const byName = new Map(STRATEGIES.map((x) => [x.name, x]));
-  const kept = strategies.filter((x) => !LEGACY_STRATEGIES.includes(x.name));
-  const add = STRATEGIES.filter((x) => (x.name.startsWith("2DTE ") || x.name.startsWith("VIX-up ") || x.name === "3 Delta") && !kept.some((k) => k.name === x.name));
-  // Keep the defaults' order for everything known; anything custom goes at the end.
+  const own = (def: string) => strategies.some((x) => x.name !== def && EQUIVALENT[def]?.test(x.name));
+  const hasLegacy = strategies.some((x) => LEGACY_STRATEGIES.includes(x.name));
+  const dupes = strategies.filter((x) => x.name in EQUIVALENT && own(x.name));
+  if (!hasLegacy && !dupes.length) return { strategies, ooMap };
+  const kept = strategies.filter((x) => !LEGACY_STRATEGIES.includes(x.name) && !dupes.includes(x));
+  const add = hasLegacy
+    ? STRATEGIES.filter((x) => x.name in EQUIVALENT && !kept.some((k) => k.name === x.name || EQUIVALENT[x.name].test(k.name)))
+    : [];
   const merged = [...kept, ...add];
-  const order = (n: string) => (byName.has(n) ? STRATEGIES.findIndex((x) => x.name === n) : 1000);
-  merged.sort((a, b) => order(a.name) - order(b.name));
   const live = new Set(merged.map((x) => x.name));
   return {
     strategies: merged,

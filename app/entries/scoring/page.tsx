@@ -53,11 +53,11 @@ export default async function EntryScoring({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <h1>Entry advisor scoring · v{version.id}</h1>
+      <h1>Entry advisor scoring · v{version.number}</h1>
       <form className="inline" method="get" style={{ marginBottom: 12 }}>
         <label className="small secondary">Version{" "}
           <select name="v" defaultValue={String(version.id)}>
-            {versions.map((v) => <option key={v.id} value={v.id}>v{v.id} · {v.model} · {v.effort} · from {toEt(new Date(v.createdAt)).date}</option>)}
+            {versions.map((v) => <option key={v.id} value={v.id}>v{v.number} · {v.model} · {v.effort} · from {toEt(new Date(v.createdAt)).date}</option>)}
           </select>
         </label>
         <button type="submit">Show</button>
@@ -72,7 +72,7 @@ export default async function EntryScoring({ searchParams }: { searchParams: Pro
           <tbody>
             {reports.map((x) => (
               <tr key={x.version.id} className={x.version.id === version.id ? "today" : ""}>
-                <td><Link href={`?v=${x.version.id}`}>v{x.version.id}</Link> <span className="muted small">{x.version.model} · {x.version.effort}</span></td>
+                <td><Link href={`?v=${x.version.id}`}>v{x.version.number}</Link> <span className="muted small">{x.version.model} · {x.version.effort}</span></td>
                 <td>{toEt(new Date(x.version.createdAt)).date}</td>
                 <td className="num">{x.counts.logged}</td><td className="num">{x.scored.length}</td><td className="num">{x.counts.noOpinion}</td>
                 <td className="num">{x.counts.error}{x.counts.lengthErrors ? <span className="muted small"> ({x.counts.lengthErrors} length)</span> : null}</td>

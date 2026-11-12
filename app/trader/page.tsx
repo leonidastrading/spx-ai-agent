@@ -52,7 +52,7 @@ export default async function TraderPage() {
       )}
 
       <section className="card">
-        <h2>Version {current ? `v${current.id}` : "(created on the next tick)"}: {model}, effort {cfg.effort}</h2>
+        <h2>Version {current ? `v${current.number}` : "(created on the next tick)"}: {model}, effort {cfg.effort}</h2>
         <p className="small secondary">
           The model, prompt, reply schema and rules are frozen per version ({current ? <code>{current.hash.slice(0, 12)}</code> : "hash pending"}). Any change starts a new version, scored separately.
           Don’t tune the prompt on results of the version being scored.

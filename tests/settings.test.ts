@@ -91,3 +91,21 @@ describe("legacy bot migration", () => {
     expect(r.ooMap).toEqual({ "long (sell puts)": "Long" });
   });
 });
+
+describe("legacy bot migration with the user's own split names", () => {
+  const def = (name: string) => ({ name, entryEt: "", description: "" });
+  const own = ["Long", "2DTE", "VIX-up", "2DTE<20", "VIX-up<20", "2DTE>20", "VIX-up>20", "3Δ 4DTE"].map(def);
+  it("drops 2DTE / VIX-up and adds nothing the user already has under another name", () => {
+    const r = migrateLegacyBots(own, { "2dte put spread": "2DTE", "long (sell puts)": "Long" });
+    expect(r.strategies.map((x) => x.name)).toEqual(["Long", "2DTE<20", "VIX-up<20", "2DTE>20", "VIX-up>20", "3Δ 4DTE"]);
+    expect(r.ooMap).toEqual({ "long (sell puts)": "Long" });
+  });
+  it("removes default-named copies an earlier migration added next to the user's names", () => {
+    const after = [...own.filter((x) => !["2DTE", "VIX-up"].includes(x.name)), ...["2DTE VIX<20", "2DTE VIX>20", "VIX-up VIX<20", "VIX-up VIX>20", "3 Delta"].map(def)];
+    expect(migrateLegacyBots(after, {}).strategies.map((x) => x.name)).toEqual(["Long", "2DTE<20", "VIX-up<20", "2DTE>20", "VIX-up>20", "3Δ 4DTE"]);
+  });
+  it("the defaults alone are left as they are", () => {
+    expect(mergeSettings({}).strategies).toHaveLength(13);
+  });
+});
+

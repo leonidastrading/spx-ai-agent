@@ -58,6 +58,15 @@ describe("LLM output validation", () => {
     expect(parseLlmOutput("```json\n" + validJson() + "\n```").marketRead).toBe("Quiet open.");
   });
 
+  it("accepts the list shape; rejects a strategy answered twice or missing", () => {
+    const list = STRATEGY_NAMES.map((n) => ({ strategy: n, call: "skip", confidence: 0.6, reason: "x" }));
+    const d = parseLlmOutput(JSON.stringify({ market_read: "Busy.", strategies: list }));
+    expect(d.calls.map((c) => c.strategy)).toEqual(STRATEGY_NAMES);
+    expect(d.calls[0].call).toBe("skip");
+    expect(() => parseLlmOutput(JSON.stringify({ market_read: "x", strategies: [...list, list[0]] }))).toThrow(/twice/);
+    expect(() => parseLlmOutput(JSON.stringify({ market_read: "x", strategies: list.slice(1) }))).toThrow(/missing/);
+  });
+
   it("rejects malformed JSON, bad calls, out-of-range confidence, missing/unknown strategies", () => {
     expect(() => parseLlmOutput("not json")).toThrow();
     expect(() => parseLlmOutput("{bad")).toThrow();
@@ -71,7 +80,11 @@ describe("LLM output validation", () => {
 
   it("JSON schema requires every strategy", () => {
     const s = llmJsonSchema() as any;
-    expect(s.properties.strategies.required).toEqual(STRATEGY_NAMES);
+    // A list with the names as an enum: the schema doesn't grow with one required key per strategy.
+    expect(s.properties.strategies.type).toBe("array");
+    expect(s.properties.strategies.items.properties.strategy.enum).toEqual(STRATEGY_NAMES);
+    const big = Array.from({ length: 30 }, (_, i) => `Bot ${i}`);
+    expect(JSON.stringify(llmJsonSchema(big)).length).toBeLessThan(JSON.stringify(llmJsonSchema(STRATEGY_NAMES)).length + 400);
   });
 });
 
