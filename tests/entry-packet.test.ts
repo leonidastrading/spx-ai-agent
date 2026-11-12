@@ -1,3 +1,4 @@
+import { ENTRY } from "@/config/entry";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_KEYWORDS } from "@/lib/news";
 import { buildPacket, expirationsOn, packetHash, type PacketInput } from "@/lib/entry/packet";
@@ -90,11 +91,11 @@ describe("reply rules", () => {
     expect(() => parseEntryReply(JSON.stringify({ ...ok, verdict: "half" }))).toThrow();
   });
 
-  it("trims over-long text to 25 words and keeps the call (flagged), never drops it for length", () => {
-    const long = Array(40).fill("w").join(" ");
+  it("trims over-long text to the word limit and keeps the call (flagged), never drops it for length", () => {
+    const long = Array(60).fill("w").join(" ");
     const r = parseEntryReply(JSON.stringify({ ...ok, main_risk: long, reasons: Array(4).fill({ ...ok.reasons[0], text: long }) }));
     expect(r.reply.verdict).toBe("skip");
-    expect(r.reply.main_risk.split(" ")).toHaveLength(25);
+    expect(r.reply.main_risk.split(" ")).toHaveLength(ENTRY.maxReasonWords);
     expect(r.reply.main_risk.endsWith("…")).toBe(true);
     expect(r.reply.reasons).toHaveLength(3);
     expect(r.trimmed).toEqual(expect.arrayContaining(["main_risk", "reasons[0]", "reasons (4 → 3)"]));

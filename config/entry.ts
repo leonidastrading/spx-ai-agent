@@ -29,8 +29,8 @@ export const ENTRY = {
   /** Decision gate: after this many scored entries AND trading days. */
   gateMinEntries: 300,
   gateMinTradingDays: 40,
-  /** Word limits in the reply. */
-  maxReasonWords: 25,
+  /** Word limits in the reply (v3: 40; at 25, 5 of 6 calls on Nov 12, 2026 had text cut). */
+  maxReasonWords: 40,
   /** Human pre-open call: "skip afternoon group" skips entries at or after this ET time. */
   afternoonFrom: "12:00",
   defaultModel: "claude-opus-5-5",

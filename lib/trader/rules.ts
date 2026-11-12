@@ -42,15 +42,21 @@ export const REPLY_JSON_SCHEMA = {
 
 export const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
 
-/** Parse and validate the model's text. Throws a readable error. */
+/** Parse and validate the model's text. Throws a readable error. A thesis over the word limit is trimmed. */
 export function parseReply(text: string): Reply {
+  return parseReplyChecked(text).reply;
+}
+
+/** As parseReply, and says whether the thesis was trimmed to TRADER.maxThesisWords (v2: trimmed, never rejected). */
+export function parseReplyChecked(text: string): { reply: Reply; trimmed: boolean } {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start < 0 || end < start) throw new Error("no JSON object in reply");
   const r = replySchema.safeParse(JSON.parse(text.slice(start, end + 1)));
   if (!r.success) throw new Error(`schema: ${r.error.issues.map((i) => `${i.path.join(".")} ${i.message}`).join("; ")}`);
-  if (wordCount(r.data.thesis) > 40) throw new Error(`thesis has ${wordCount(r.data.thesis)} words (max 40)`);
-  return r.data;
+  const w = r.data.thesis.trim().split(/\s+/).filter(Boolean);
+  if (w.length <= TRADER.maxThesisWords) return { reply: r.data, trimmed: false };
+  return { reply: { ...r.data, thesis: `${w.slice(0, TRADER.maxThesisWords).join(" ")}…` }, trimmed: true };
 }
 
 // ---------------------------------------------------------------- state
@@ -171,7 +177,7 @@ export function timeExitDue(now: Date, t: OpenTrade): "time" | "eod" | null {
 /**
  * "No action: bad data" checks against the server clock:
  *  - the latest quote is at most 10 s old (and not from the future);
- *  - every minute of the last N completed minutes has a 1-min bar;
+ *  - the last N completed minutes have 1-min bars, at most TRADER.maxMissingBars missing, and never the latest;
  *  - no bar or quote is timestamped more than 5 s ahead of the server clock.
  * Returns problems found (empty = data OK).
  */
@@ -195,7 +201,8 @@ export function dataProblems(args: { now: Date; quote: Quote | undefined; bars1m
   const have = new Set(bars1m.map((b) => Date.parse(b.ts)));
   const missing: string[] = [];
   for (let t = from; t <= lastClosedStart; t += 60000) if (!have.has(t)) missing.push(toEt(new Date(t)).hhmm);
-  if (missing.length) out.push(`missing 1-min bars at ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? ` (+${missing.length - 5})` : ""}`);
+  const latestMissing = !have.has(lastClosedStart);
+  if (missing.length > TRADER.maxMissingBars || latestMissing) out.push(`missing 1-min bars at ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? ` (+${missing.length - 5})` : ""}`);
   return out;
 }
 

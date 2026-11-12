@@ -147,7 +147,7 @@ describe("entry advisor engine", () => {
     exp = ooExport({ entries: [entry({ id: "sma0000000000000000000v2", bot: null, candidates: [], match: "none", matchConfidence: 0, matchReason: "iron condor, puts 55 wide, calls 50 wide", filledAt: fill, legs, contracts: 12, netPrice: 8.05 })] });
     exp.bots["8SMA IC"] = exp.bots["5d IC"];
     now = new Date(at("13:30", 15));
-    const long = Array(40).fill("risk").join(" ");
+    const long = Array(60).fill("risk").join(" ");
     replyFor = () => ({ main_risk: long });
     const before = prompts.length;
     await runEntryTick(deps);
@@ -155,7 +155,7 @@ describe("entry advisor engine", () => {
     const row = (await pg.query<any>(`SELECT * FROM entry_calls WHERE entry_id = 'sma0000000000000000000v2'`)).rows[0];
     expect(row).toMatchObject({ status: "called", bot: "8SMA IC", match_source: "local_profile", trimmed: ["main_risk"] });
     expect(row.status_reason).toMatch(/trimmed: main_risk/);
-    expect(row.reply.main_risk.split(" ")).toHaveLength(25);
+    expect(row.reply.main_risk.split(" ")).toHaveLength(40);
     expect(prompts.length).toBe(before + 1);
     // The fixture day (2024) is before the drawdown window, so the packet says so rather than show a wrong number.
     expect(row.packet.book.account_drawdown).toMatch(/unavailable/);
