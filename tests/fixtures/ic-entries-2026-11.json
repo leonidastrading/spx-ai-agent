@@ -1,8 +1,8 @@
 [
  {
-  "id": "6e10d31328be91d20f029d7f",
+  "id": "fixture0000000000000000",
   "filledAt": "2026-11-04T18:30:03.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -16,29 +16,29 @@
    {
     "putCall": "P",
     "strike": 7550,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "C",
     "strike": 7745,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "C",
     "strike": 7845,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7650,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-04"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 0.9,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -46,9 +46,9 @@
   }
  },
  {
-  "id": "cb44bdba5b06bb822e001829",
+  "id": "fixture0001000000000000",
   "filledAt": "2026-11-04T18:30:03.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "8SMA IC",
   "candidates": [
    "8SMA IC"
@@ -62,29 +62,29 @@
    {
     "putCall": "C",
     "strike": 7725,
-    "qty": -27,
+    "qty": -1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7685,
-    "qty": 27,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "C",
     "strike": 7825,
-    "qty": 27,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7710,
-    "qty": -27,
+    "qty": -1,
     "expiration": "2026-11-04"
    }
   ],
-  "contracts": 27,
+  "contracts": 1,
   "netPrice": 9.65,
   "rules": {
    "stop": null,
@@ -92,9 +92,9 @@
   }
  },
  {
-  "id": "1934dd31b78e2f8ce9bd3ab1",
+  "id": "fixture0002000000000000",
   "filledAt": "2026-11-04T18:35:07.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "$8 IC",
   "candidates": [
    "$8 IC"
@@ -108,29 +108,29 @@
    {
     "putCall": "C",
     "strike": 7705,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7655,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "C",
     "strike": 7755,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7705,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-04"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 16,
   "rules": {
    "stop": null,
@@ -138,9 +138,9 @@
   }
  },
  {
-  "id": "9b0bae5c98e168f546293810",
+  "id": "fixture0003000000000000",
   "filledAt": "2026-11-04T18:50:02.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -154,23 +154,23 @@
    {
     "putCall": "P",
     "strike": 7730,
-    "qty": 7,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7700,
-    "qty": -14,
+    "qty": -2,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7655,
-    "qty": 7,
+    "qty": 1,
     "expiration": "2026-11-04"
    }
   ],
-  "contracts": 7,
+  "contracts": 1,
   "netPrice": -15.75,
   "rules": {
    "stop": null,
@@ -178,9 +178,9 @@
   }
  },
  {
-  "id": "e3f7b168943d3ddba3d736ad",
+  "id": "fixture0004000000000000",
   "filledAt": "2026-11-04T19:20:15.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -194,23 +194,23 @@
    {
     "putCall": "P",
     "strike": 7740,
-    "qty": 7,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7710,
-    "qty": -14,
+    "qty": -2,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7665,
-    "qty": 7,
+    "qty": 1,
     "expiration": "2026-11-04"
    }
   ],
-  "contracts": 7,
+  "contracts": 1,
   "netPrice": -17.85,
   "rules": {
    "stop": null,
@@ -218,9 +218,9 @@
   }
  },
  {
-  "id": "73441719fe38e6be06760af7",
+  "id": "fixture0005000000000000",
   "filledAt": "2026-11-04T19:30:06.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -234,29 +234,29 @@
    {
     "putCall": "P",
     "strike": 7670,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "C",
     "strike": 7835,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7570,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "C",
     "strike": 7735,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-04"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 0.7,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -264,9 +264,9 @@
   }
  },
  {
-  "id": "99a4a6e53996e9fdb72ce151",
+  "id": "fixture0006000000000000",
   "filledAt": "2026-11-04T19:50:05.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -280,23 +280,23 @@
    {
     "putCall": "P",
     "strike": 7660,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7735,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-04"
    },
    {
     "putCall": "P",
     "strike": 7705,
-    "qty": -12,
+    "qty": -2,
     "expiration": "2026-11-04"
    }
   ],
-  "contracts": 6,
+  "contracts": 1,
   "netPrice": -19.35,
   "rules": {
    "stop": null,
@@ -304,9 +304,9 @@
   }
  },
  {
-  "id": "a0dff8530a00a9b5cef82d7d",
+  "id": "fixture0007000000000000",
   "filledAt": "2026-11-05T18:30:06.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -320,29 +320,29 @@
    {
     "putCall": "C",
     "strike": 7525,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-05"
    },
    {
     "putCall": "C",
     "strike": 7625,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-05"
    },
    {
     "putCall": "P",
     "strike": 7155,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-05"
    },
    {
     "putCall": "P",
     "strike": 7255,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-05"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 2.5,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -350,9 +350,9 @@
   }
  },
  {
-  "id": "f755b2db4c2335d143bdf36c",
+  "id": "fixture0008000000000000",
   "filledAt": "2026-11-05T19:30:04.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -366,29 +366,29 @@
    {
     "putCall": "C",
     "strike": 7495,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-05"
    },
    {
     "putCall": "P",
     "strike": 7175,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-05"
    },
    {
     "putCall": "C",
     "strike": 7595,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-05"
    },
    {
     "putCall": "P",
     "strike": 7275,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-05"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 2.2,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -396,9 +396,9 @@
   }
  },
  {
-  "id": "54d3491f1f72f0f519daa356",
+  "id": "fixture0009000000000000",
   "filledAt": "2026-11-06T18:30:12.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -412,29 +412,29 @@
    {
     "putCall": "C",
     "strike": 7465,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-06"
    },
    {
     "putCall": "P",
     "strike": 7205,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-06"
    },
    {
     "putCall": "C",
     "strike": 7565,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-06"
    },
    {
     "putCall": "P",
     "strike": 7305,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-06"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 1.55,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -442,9 +442,9 @@
   }
  },
  {
-  "id": "16d00aced01fdf584f19ca50",
+  "id": "fixture0010000000000000",
   "filledAt": "2026-11-06T19:30:04.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -458,29 +458,29 @@
    {
     "putCall": "P",
     "strike": 7240,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-06"
    },
    {
     "putCall": "C",
     "strike": 7545,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-06"
    },
    {
     "putCall": "C",
     "strike": 7445,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-06"
    },
    {
     "putCall": "P",
     "strike": 7340,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-06"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 1.1,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -488,9 +488,9 @@
   }
  },
  {
-  "id": "04b8c559de5bb6ea91c35b27",
+  "id": "fixture0011000000000000",
   "filledAt": "2026-11-09T18:30:13.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -504,29 +504,29 @@
    {
     "putCall": "P",
     "strike": 7485,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "C",
     "strike": 7685,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "P",
     "strike": 7385,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "C",
     "strike": 7585,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-09"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 0.7,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -534,9 +534,9 @@
   }
  },
  {
-  "id": "7ab5321dcc4be8f40d23c315",
+  "id": "fixture0012000000000000",
   "filledAt": "2026-11-09T18:50:04.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -550,23 +550,23 @@
    {
     "putCall": "P",
     "strike": 7585,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "P",
     "strike": 7555,
-    "qty": -12,
+    "qty": -2,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "P",
     "strike": 7510,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-09"
    }
   ],
-  "contracts": 6,
+  "contracts": 1,
   "netPrice": -17.4,
   "rules": {
    "stop": null,
@@ -574,9 +574,9 @@
   }
  },
  {
-  "id": "4b2b6588e88d93456ab4d676",
+  "id": "fixture0013000000000000",
   "filledAt": "2026-11-09T19:20:02.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -590,23 +590,23 @@
    {
     "putCall": "P",
     "strike": 7580,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "P",
     "strike": 7550,
-    "qty": -12,
+    "qty": -2,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "P",
     "strike": 7505,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-09"
    }
   ],
-  "contracts": 6,
+  "contracts": 1,
   "netPrice": -19.6,
   "rules": {
    "stop": null,
@@ -614,9 +614,9 @@
   }
  },
  {
-  "id": "d1f047cebce2552d2b55d1ca",
+  "id": "fixture0014000000000000",
   "filledAt": "2026-11-09T19:30:09.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -630,29 +630,29 @@
    {
     "putCall": "C",
     "strike": 7570,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "P",
     "strike": 7395,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "C",
     "strike": 7670,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "P",
     "strike": 7495,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-09"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 0.6,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -660,9 +660,9 @@
   }
  },
  {
-  "id": "cc48397a56180d5fb2a51ea7",
+  "id": "fixture0015000000000000",
   "filledAt": "2026-11-09T19:50:03.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -676,23 +676,23 @@
    {
     "putCall": "P",
     "strike": 7560,
-    "qty": -12,
+    "qty": -2,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "P",
     "strike": 7515,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-09"
    },
    {
     "putCall": "P",
     "strike": 7590,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-09"
    }
   ],
-  "contracts": 6,
+  "contracts": 1,
   "netPrice": -17.85,
   "rules": {
    "stop": null,
@@ -700,9 +700,9 @@
   }
  },
  {
-  "id": "60a72638df6c6512a65cefac",
+  "id": "fixture0016000000000000",
   "filledAt": "2026-11-10T18:30:03.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -716,29 +716,29 @@
    {
     "putCall": "P",
     "strike": 7435,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "C",
     "strike": 7630,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "P",
     "strike": 7335,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "C",
     "strike": 7530,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-10"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 1.1,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -746,9 +746,9 @@
   }
  },
  {
-  "id": "02cc79ea2ee7eeea0185f2ce",
+  "id": "fixture0017000000000000",
   "filledAt": "2026-11-10T18:50:10.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -762,23 +762,23 @@
    {
     "putCall": "P",
     "strike": 7525,
-    "qty": 7,
+    "qty": 1,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "P",
     "strike": 7495,
-    "qty": -14,
+    "qty": -2,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "P",
     "strike": 7450,
-    "qty": 7,
+    "qty": 1,
     "expiration": "2026-11-10"
    }
   ],
-  "contracts": 7,
+  "contracts": 1,
   "netPrice": -15.05,
   "rules": {
    "stop": null,
@@ -786,9 +786,9 @@
   }
  },
  {
-  "id": "0a817aa85c9e415818cb3d11",
+  "id": "fixture0018000000000000",
   "filledAt": "2026-11-10T19:20:15.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -802,23 +802,23 @@
    {
     "putCall": "P",
     "strike": 7535,
-    "qty": 7,
+    "qty": 1,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "P",
     "strike": 7505,
-    "qty": -14,
+    "qty": -2,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "P",
     "strike": 7460,
-    "qty": 7,
+    "qty": 1,
     "expiration": "2026-11-10"
    }
   ],
-  "contracts": 7,
+  "contracts": 1,
   "netPrice": -16.2,
   "rules": {
    "stop": null,
@@ -826,9 +826,9 @@
   }
  },
  {
-  "id": "7625f4222072cd500c765a95",
+  "id": "fixture0019000000000000",
   "filledAt": "2026-11-10T19:30:08.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -842,29 +842,29 @@
    {
     "putCall": "C",
     "strike": 7545,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "P",
     "strike": 7370,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "C",
     "strike": 7645,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "P",
     "strike": 7470,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-10"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 0.75,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -872,9 +872,9 @@
   }
  },
  {
-  "id": "224ccfaba24c80d6778bc2a4",
+  "id": "fixture0020000000000000",
   "filledAt": "2026-11-10T19:50:03.000Z",
-  "detectedAt": "2026-11-11T21:45:24.003Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -888,23 +888,23 @@
    {
     "putCall": "P",
     "strike": 7550,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "P",
     "strike": 7520,
-    "qty": -12,
+    "qty": -2,
     "expiration": "2026-11-10"
    },
    {
     "putCall": "P",
     "strike": 7475,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-10"
    }
   ],
-  "contracts": 6,
+  "contracts": 1,
   "netPrice": -17.25,
   "rules": {
    "stop": null,
@@ -912,9 +912,9 @@
   }
  },
  {
-  "id": "bfacdbd043ca09c0c2174030",
+  "id": "fixture0021000000000000",
   "filledAt": "2026-11-11T18:30:03.000Z",
-  "detectedAt": "2026-11-11T18:30:04.748Z",
+  "detectedAt": null,
   "bot": null,
   "candidates": [],
   "match": "none",
@@ -926,29 +926,29 @@
    {
     "putCall": "C",
     "strike": 7660,
-    "qty": -12,
+    "qty": -1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7590,
-    "qty": 12,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "C",
     "strike": 7710,
-    "qty": 12,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7645,
-    "qty": -12,
+    "qty": -1,
     "expiration": "2026-11-11"
    }
   ],
-  "contracts": 12,
+  "contracts": 1,
   "netPrice": 8.05,
   "rules": {
    "stop": null,
@@ -956,9 +956,9 @@
   }
  },
  {
-  "id": "d0e6824bd205294266801023",
+  "id": "fixture0022000000000000",
   "filledAt": "2026-11-11T18:30:08.000Z",
-  "detectedAt": "2026-11-11T18:30:28.880Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -972,29 +972,29 @@
    {
     "putCall": "C",
     "strike": 7675,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7500,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "C",
     "strike": 7775,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7600,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-11"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 0.7,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -1002,9 +1002,9 @@
   }
  },
  {
-  "id": "8f43af06ef0a2287678cfefa",
+  "id": "fixture0023000000000000",
   "filledAt": "2026-11-11T18:35:02.000Z",
-  "detectedAt": "2026-11-11T18:35:25.637Z",
+  "detectedAt": null,
   "bot": null,
   "candidates": [],
   "match": "none",
@@ -1016,29 +1016,29 @@
    {
     "putCall": "P",
     "strike": 7645,
-    "qty": -10,
+    "qty": -1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "C",
     "strike": 7690,
-    "qty": 10,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7590,
-    "qty": 10,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "C",
     "strike": 7640,
-    "qty": -10,
+    "qty": -1,
     "expiration": "2026-11-11"
    }
   ],
-  "contracts": 10,
+  "contracts": 1,
   "netPrice": 14.7,
   "rules": {
    "stop": null,
@@ -1046,9 +1046,9 @@
   }
  },
  {
-  "id": "ee4b29716dae9f892a7d0f4b",
+  "id": "fixture0024000000000000",
   "filledAt": "2026-11-11T18:50:02.000Z",
-  "detectedAt": "2026-11-11T18:50:03.354Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -1062,23 +1062,23 @@
    {
     "putCall": "P",
     "strike": 7680,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7650,
-    "qty": -12,
+    "qty": -2,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7605,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-11"
    }
   ],
-  "contracts": 6,
+  "contracts": 1,
   "netPrice": -18.85,
   "rules": {
    "stop": null,
@@ -1086,9 +1086,9 @@
   }
  },
  {
-  "id": "825d088e3fdca34b54ffa3e1",
+  "id": "fixture0025000000000000",
   "filledAt": "2026-11-11T19:20:04.000Z",
-  "detectedAt": "2026-11-11T19:20:25.618Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -1102,23 +1102,23 @@
    {
     "putCall": "P",
     "strike": 7655,
-    "qty": 7,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7625,
-    "qty": -14,
+    "qty": -2,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7580,
-    "qty": 7,
+    "qty": 1,
     "expiration": "2026-11-11"
    }
   ],
-  "contracts": 7,
+  "contracts": 1,
   "netPrice": -16.05,
   "rules": {
    "stop": null,
@@ -1126,9 +1126,9 @@
   }
  },
  {
-  "id": "5c39fa41443dd9deefca9b52",
+  "id": "fixture0026000000000000",
   "filledAt": "2026-11-11T19:30:12.000Z",
-  "detectedAt": "2026-11-11T19:30:27.067Z",
+  "detectedAt": null,
   "bot": "5d IC",
   "candidates": [
    "5d IC"
@@ -1142,29 +1142,29 @@
    {
     "putCall": "C",
     "strike": 7655,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7485,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "C",
     "strike": 7755,
-    "qty": 13,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7585,
-    "qty": -13,
+    "qty": -1,
     "expiration": "2026-11-11"
    }
   ],
-  "contracts": 13,
+  "contracts": 1,
   "netPrice": 0.6,
   "rules": {
    "stop": "300% of credit (OO SL300)",
@@ -1172,9 +1172,9 @@
   }
  },
  {
-  "id": "f22d196a4d3362dc43a9f284",
+  "id": "fixture0027000000000000",
   "filledAt": "2026-11-11T19:50:03.000Z",
-  "detectedAt": "2026-11-11T19:50:26.117Z",
+  "detectedAt": null,
   "bot": "BWB",
   "candidates": [
    "BWB"
@@ -1188,23 +1188,23 @@
    {
     "putCall": "P",
     "strike": 7590,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7665,
-    "qty": 6,
+    "qty": 1,
     "expiration": "2026-11-11"
    },
    {
     "putCall": "P",
     "strike": 7635,
-    "qty": -12,
+    "qty": -2,
     "expiration": "2026-11-11"
    }
   ],
-  "contracts": 6,
+  "contracts": 1,
   "netPrice": -19.35,
   "rules": {
    "stop": null,

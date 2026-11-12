@@ -41,6 +41,7 @@ export interface ProfileFit {
   minutesOff: number;
   detail: string;
   score: number;
+  lotsOutside: number;
 }
 
 /** Score an entry against each live profile; best first. */
@@ -60,24 +61,27 @@ export function profileFits(entry: OoEntry, profiles: LiveProfile[] = LIVE_PROFI
     const lots = outside(entry.contracts, p.contracts);
     const pw = outside(shape.putWidth, p.putWidth);
     const cw = outside(shape.callWidth, p.callWidth);
+    // Entry time, structure (wing widths) and credit decide; lot count never lowers confidence, because size
+    // changes (it is only a tie-breaker between two otherwise equal fits).
     let c = 0.9;
     if (minutesOff > 5) c -= 0.15;
     if (minutesOff > 15) c -= 0.15;
     c -= Math.min(0.4, 0.4 * credit);
-    if (lots > 0) c -= 0.1;
     if (pw > 0) c -= 0.15;
     if (cw > 0) c -= 0.15;
     fits.push({
       bot: p.bot,
       confidence: r2(Math.max(0, c)),
       minutesOff: r2(minutesOff),
-      score: minutesOff + 10 * credit + 5 * (pw + cw) + 2 * lots,
+      score: minutesOff + 10 * credit + 5 * (pw + cw),
+      lotsOutside: lots,
       detail: `${Math.round(minutesOff)} min from ${p.times.join("/")}, credit ${entry.netPrice} vs ${p.credit[0]}–${p.credit[1]}, ${entry.contracts} lots vs ${p.contracts[0]}–${p.contracts[1]}, wings ${shape.putWidth}/${shape.callWidth} vs ${p.putWidth.join("–")}/${p.callWidth.join("–")}`,
     });
   }
-  fits.sort((a, b) => a.score - b.score);
+  // Lots only break a near-tie (scores within 0.5).
+  fits.sort((a, b) => (Math.abs(a.score - b.score) < 0.5 ? a.lotsOutside - b.lotsOutside : a.score - b.score));
   // A close runner-up makes the pick less certain.
-  if (fits.length > 1 && fits[1].score - fits[0].score < 2) fits[0] = { ...fits[0], confidence: r2(Math.max(0, fits[0].confidence - 0.2)) };
+  if (fits.length > 1 && Math.abs(fits[1].score - fits[0].score) < 2) fits[0] = { ...fits[0], confidence: r2(Math.max(0, fits[0].confidence - 0.2)) };
   return fits;
 }
 

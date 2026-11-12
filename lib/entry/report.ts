@@ -61,7 +61,8 @@ export async function entryReport(version: es.EntryVersion): Promise<EntryReport
       confidence: c.confidence ?? 0,
       dayType: c.dayType ?? "unclear",
       categories: [...new Set(((c.reply?.reasons ?? []) as Array<{ category: string }>).map((r) => r.category))],
-      driver: (c.reply?.reasons?.[0]?.category as string | undefined) ?? null,
+      // v2: the model names the deciding reason; v1 replies fall back to the first reason listed.
+      driver: (c.reply?.primary_category as string | undefined) ?? (c.reply?.reasons?.[0]?.category as string | undefined) ?? null,
       vixChangePct: c.vixChangePct,
       pl: outcomes.get(c.entryId)!.pl,
     }));

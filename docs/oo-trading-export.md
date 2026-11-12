@@ -89,9 +89,8 @@ Patch: `docs/oo-trading-advisor-v2.patch` (apply on oo-trading's production bran
 - `book.open[]`: entries still open now: `entryId, bot, filledAt, legs, contracts, pl` (open P/L at the marks).
 - `account`: `{ netLiq, startNetLiq, asOf, eod: [{ date, netLiq }] }`: Schwab net liquidation value now and at
   each stored end of day. No account number, hash or last four. The advisor stores every reading and measures the
-  packet's drawdown as NLV against its high since Oct 19, 2026. (`book.drawdownFromHigh` only sums the last
-  15 trading days of book P/L, which is why Nov 11's packet said −145k when the account was down ~196k; the
-  advisor no longer shows it to the model.)
+  packet's drawdown as NLV against its high since Oct 19, 2026. (`book.drawdownFromHigh` only sums the last 15 trading days of book P/L, so it understated the account's
+  drawdown; the advisor no longer shows it to the model.)
 
 Until the patch is deployed the advisor still names those ICs itself, from how the bots fill at Schwab
 (`config/entry.ts` `LIVE_PROFILES`), and the packet says the account drawdown is unavailable.

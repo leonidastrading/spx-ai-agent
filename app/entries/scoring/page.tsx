@@ -124,7 +124,7 @@ export default async function EntryScoring({ searchParams }: { searchParams: Pro
       <section className="card">
         <h2>Reduce / skip calls by what drove them</h2>
         <p className="small secondary">
-          Each reduce or skip is filed under the category of its first (leading) reason. If cuts based on the bot’s own recent losses don’t avoid more losers than cuts based on price, vol or news, the recent-record reasoning adds nothing.
+          Each reduce or skip is filed under the category of the reason that decided it (v2: the model’s “primary_category”; v1: its first reason, which it wasn’t told to put first). If cuts based on the bot’s own recent losses don’t avoid more losers than cuts based on price, vol or news, the recent-record reasoning adds nothing.
           Reference: take calls average {signed(r.takeAvgPl)} actual P/L.
         </p>
         <div className="table-wrap"><table>

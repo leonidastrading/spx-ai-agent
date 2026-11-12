@@ -20,7 +20,7 @@ export interface ScoredCall {
   confidence: number;
   dayType: string;
   categories: string[];
-  /** The category of the first (leading) reason: what drove the call. */
+  /** The category of the deciding reason (v2 primary_category; v1 the first reason listed). */
   driver?: string | null;
   /** VIX % change on the day at the entry (for the simple-rule baseline). */
   vixChangePct: number | null;

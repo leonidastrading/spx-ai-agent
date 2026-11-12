@@ -35,4 +35,12 @@ describe("bot matching for live fills", () => {
     expect(r.confident).toBe(false);
     expect(r.confidence).toBeLessThan(0.6);
   });
+
+  it("does not depend on size: the same fills at a third of the lots match the same bots at the same confidence", () => {
+    for (const e of entries) {
+      const small = { ...e, contracts: Math.max(1, Math.round(e.contracts / 3)) };
+      expect(profileFits(small)[0]?.bot).toBe(profileFits(e)[0]?.bot);
+      expect(profileFits(small)[0]?.confidence).toBe(profileFits(e)[0]?.confidence);
+    }
+  });
 });

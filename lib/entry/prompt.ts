@@ -14,10 +14,12 @@ For the entry in the packet, say whether you would have taken it at full size ("
 
 Everything in the packet was known at or before the fill. "health" lists data that is missing or stale; set "data_ok": false if what is missing would change your call.
 
+List the reasons most important first, and name in "primary_category" the category of the one reason that decided the verdict.
+
 Classify the day so far as one of trend_up, trend_down, range, reversal, vol_expansion, unclear.
 
 Reply with JSON only:
-{"verdict": "take"|"reduce"|"skip", "confidence": 0-100, "day_type": "...", "reasons": [{"category": "price"|"vol"|"news"|"calendar"|"book"|"bot_record"|"data", "text": "<= ${ENTRY.maxReasonWords} words"}] (1 to 3), "main_risk": "<= ${ENTRY.maxReasonWords} words", "would_change_mind": "<= ${ENTRY.maxReasonWords} words", "data_ok": true|false}`;
+{"verdict": "take"|"reduce"|"skip", "confidence": 0-100, "day_type": "...", "reasons": [{"category": "price"|"vol"|"news"|"calendar"|"book"|"bot_record"|"data", "text": "<= ${ENTRY.maxReasonWords} words"}] (1 to 3, most important first), "primary_category": the deciding reason's category, "main_risk": "<= ${ENTRY.maxReasonWords} words", "would_change_mind": "<= ${ENTRY.maxReasonWords} words", "data_ok": true|false}`;
 
 const words = (s: string) => s.trim().split(/\s+/).filter(Boolean);
 /** Text fields: length is not a reason to drop a call; over-long text is trimmed afterwards and flagged. */
@@ -28,6 +30,8 @@ export const replySchema = z.object({
   confidence: z.number().min(0).max(100),
   day_type: z.enum(DAY_TYPES),
   reasons: z.array(z.object({ category: z.enum(REASON_CATEGORIES), text: short })).min(1),
+  /** The category of the reason that decided the verdict. */
+  primary_category: z.enum(REASON_CATEGORIES),
   main_risk: short,
   would_change_mind: short,
   data_ok: z.boolean(),
@@ -37,7 +41,7 @@ export type EntryReply = z.infer<typeof replySchema>;
 export const REPLY_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["verdict", "confidence", "day_type", "reasons", "main_risk", "would_change_mind", "data_ok"],
+  required: ["verdict", "confidence", "day_type", "reasons", "primary_category", "main_risk", "would_change_mind", "data_ok"],
   properties: {
     verdict: { type: "string", enum: [...VERDICTS] },
     confidence: { type: "number" },
@@ -51,6 +55,7 @@ export const REPLY_JSON_SCHEMA = {
         properties: { category: { type: "string", enum: [...REASON_CATEGORIES] }, text: { type: "string" } },
       },
     },
+    primary_category: { type: "string", enum: [...REASON_CATEGORIES] },
     main_risk: { type: "string" },
     would_change_mind: { type: "string" },
     data_ok: { type: "boolean" },

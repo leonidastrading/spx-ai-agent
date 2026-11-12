@@ -16,7 +16,7 @@ let replyFor: (n: number) => object = () => ({});
 let modelDelayMs = 5000;
 
 const reply = (p: object = {}) =>
-  JSON.stringify({ verdict: "reduce", confidence: 64, day_type: "range", reasons: [{ category: "vol", text: "VIX up 8% with the move fading." }], main_risk: "Late-day trend.", would_change_mind: "VIX back under 15.", data_ok: true, ...p });
+  JSON.stringify({ verdict: "reduce", confidence: 64, day_type: "range", reasons: [{ category: "vol", text: "VIX up 8% with the move fading." }], primary_category: "vol", main_risk: "Late-day trend.", would_change_mind: "VIX back under 15.", data_ok: true, ...p });
 
 const deps: EntryDeps = {
   fetchExport: async () => exp,

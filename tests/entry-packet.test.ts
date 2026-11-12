@@ -83,7 +83,7 @@ describe("packet: nothing after the entry", () => {
 });
 
 describe("reply rules", () => {
-  const ok = { verdict: "skip", confidence: 70, day_type: "trend_down", reasons: [{ category: "price", text: "Broke the opening range low on volume." }], main_risk: "Afternoon squeeze.", would_change_mind: "Reclaim of VWAP.", data_ok: true };
+  const ok = { verdict: "skip", confidence: 70, day_type: "trend_down", reasons: [{ category: "price", text: "Broke the opening range low on volume." }], primary_category: "price", main_risk: "Afternoon squeeze.", would_change_mind: "Reclaim of VWAP.", data_ok: true };
   it("accepts a valid reply", () => expect(parseEntryReply(JSON.stringify(ok)).reply.verdict).toBe("skip"));
   it("at least one reason, enums enforced", () => {
     expect(() => parseEntryReply(JSON.stringify({ ...ok, reasons: [] }))).toThrow();

@@ -53,6 +53,7 @@ export interface LiveProfile {
   /** Usual entry times, HH:MM ET. */
   times: string[];
   credit: [number, number];
+  /** Tie-breaker only: lot count changes with sizing, so it never lowers a match's confidence. */
   contracts: [number, number];
   putWidth: [number, number];
   callWidth: [number, number];
