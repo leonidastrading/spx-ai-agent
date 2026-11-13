@@ -4,8 +4,13 @@
  * any order endpoint (see lib/alpaca.ts).
  */
 
-import { SCHEDULE, SYMBOLS } from "@/config/rules";
+import { RULES, SCHEDULE, SYMBOLS } from "@/config/rules";
 import { AlpacaClient, credsFromEnv, referenceHostFromEnv, type Feed } from "./alpaca";
+import { backfillAtrBatch } from "./atr-backfill";
+import { bookContextFromExport } from "./book-context";
+import { ensureBookVersion } from "./book-version";
+import { exportConfigFromEnv, makeExportClient } from "./entry/client";
+import type { BookContext } from "./decision";
 import * as store from "./db";
 import { ruleDecision, buildUserPrompt, type StrategyCall } from "./decision";
 import { buildSummaryEmail, sendEmail } from "./email";
@@ -29,11 +34,12 @@ let feedCache: { date: string; feed: Feed } | null = null;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export async function runTick(now = new Date()): Promise<TickResult> {
+export async function runTick(now = new Date(), opts: { backfillAtr?: boolean } = {}): Promise<TickResult> {
+  const backfill = opts.backfillAtr ?? process.env.ATR_BACKFILL !== "off";
   // Weekend / outside-window calls skip before any Alpaca request (holidays need the calendar).
   const etPre = toEt(now);
   const pre = cronGate(now, { date: etPre.date, open: SCHEDULE.windowStart, close: "16:00" }, SCHEDULE);
-  if (pre.action === "skip") return skipRun(pre.reason);
+  if (pre.action === "skip") return skipRun(pre.reason, backfill ? now : undefined);
 
   const alpaca = new AlpacaClient({
     creds: credsFromEnv(),
@@ -45,7 +51,7 @@ export async function runTick(now = new Date()): Promise<TickResult> {
   const sessions = await alpaca.getCalendar(addDays(etNow.date, -10), etNow.date);
   const gate = cronGate(now, sessionOn(sessions, etNow.date), SCHEDULE);
 
-  if (gate.action === "skip") return skipRun(gate.reason);
+  if (gate.action === "skip") return skipRun(gate.reason, backfill ? now : undefined);
 
   const { session, et } = gate;
   const prior = priorSession(sessions, session.date);
@@ -89,10 +95,21 @@ export async function runTick(now = new Date()): Promise<TickResult> {
   }
 }
 
-async function skipRun(reason: string): Promise<TickResult> {
+async function skipRun(reason: string, now?: Date): Promise<TickResult> {
+  const notes = [reason];
+  // Outside the window, fill the rule's ATR history a batch at a time until the lookback is covered.
+  if (now && process.env.ALPACA_API_KEY_ID && (await store.atrHistoryCount(toEt(now).date)) < RULES.atrLookbackDays) {
+    try {
+      const alpaca = new AlpacaClient({ creds: credsFromEnv(), referenceHost: referenceHostFromEnv(), maxRetries: 2 });
+      const r = await backfillAtrBatch(alpaca, now);
+      if (r.filled || r.missing) notes.push(`ATR history backfill: +${r.filled} days (${r.have} with ATR, ${r.missing} still to fetch)`);
+    } catch (err) {
+      notes.push(`ATR history backfill failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
   const id = await store.startRun("skip", null);
-  await store.finishRun(id, { status: "skipped", detail: reason });
-  return { status: "skipped", action: "skip", minuteEt: null, feed: null, rowsWritten: {}, notes: [reason] };
+  await store.finishRun(id, { status: "skipped", detail: notes.join("; ") });
+  return { status: "skipped", action: "skip", minuteEt: null, feed: null, rowsWritten: {}, notes };
 }
 
 /** Fetch bars and headlines newer than what's stored, up to `end` (exclusive). */
@@ -155,28 +172,30 @@ async function decide(
   }
 
   const { features, news } = await computeAndStoreFeatures(session, prior, asOf, feed, SCHEDULE.decisionAt, cfg);
+  const version = await ensureBookVersion(cfg);
   await store.upsertMorningHistory(session.date, features.atr30_bp, features.spy_ret_prev_close_pct, "live");
 
   if (!haveRule) {
     const hist = await store.atrHistory(session.date, cfg.rules.atrLookbackDays);
     const rule = ruleDecision(features, hist, cfg.rules, strategyNames(cfg));
-    out.rule_decisions = await store.insertDecisions(session.date, "rule", rule.calls);
+    out.rule_decisions = await store.insertDecisions(session.date, "rule", rule.calls, version.id);
     notes.push(`rule: ${rule.call}`);
   }
 
   if (!haveLlm) {
     const headlines = topHeadlines(newsWindow(news, prior, asOf), cfg.llm.maxHeadlines, cfg.keywords).map((h) => ({ ts: h.ts, headline: h.headline }));
-    const promptInput = { date: session.date, features, headlines, strategies: cfg.strategies };
+    const book = await loadBookContext(session.date, asOf, notes);
+    const promptInput = { date: session.date, features, headlines, strategies: cfg.strategies, book };
     const lastChance = etMinutes >= hhmmToMinutes(SCHEDULE.catchUpUntil) - 1;
     try {
       const res = await runLlmDecision(promptInput, { model: effectiveModel(cfg), effort: cfg.llm.effort });
       if (res.decision) {
-        out.llm_decisions = await store.insertDecisions(session.date, "llm", res.decision.calls);
+        out.llm_decisions = await store.insertDecisions(session.date, "llm", res.decision.calls, version.id);
         await store.insertLlmRead(session.date, res.model, res.decision.marketRead, buildUserPrompt(promptInput), res.attempts);
         notes.push(`llm: ${summarize(res.decision.calls)}`);
       } else {
         const reason = `invalid JSON twice: ${res.attempts.map((a) => a.error).join(" | ")}`;
-        out.llm_decisions = await store.insertDecisions(session.date, "llm", [{ strategy: "*", call: "error", confidence: null, reason }]);
+        out.llm_decisions = await store.insertDecisions(session.date, "llm", [{ strategy: "*", call: "error", confidence: null, reason }], version.id);
         await store.insertLlmRead(session.date, res.model, null, buildUserPrompt(promptInput), res.attempts);
         notes.push("llm: error row stored");
       }
@@ -184,11 +203,23 @@ async function decide(
       // API/network error: leave no row so the next minute retries, until the last catch-up minute.
       const message = err instanceof Error ? err.message : String(err);
       if (!lastChance) throw new Error(`LLM call failed (will retry next minute): ${message}`);
-      out.llm_decisions = await store.insertDecisions(session.date, "llm", [{ strategy: "*", call: "error", confidence: null, reason: `API error: ${message}` }]);
+      out.llm_decisions = await store.insertDecisions(session.date, "llm", [{ strategy: "*", call: "error", confidence: null, reason: `API error: ${message}` }], version.id);
       notes.push("llm: API error row stored");
     }
   }
   return out;
+}
+
+/** VIX / VIX9D and open positions at 10:50 from oo-trading's export; undefined when it isn't connected or fails. */
+async function loadBookContext(date: string, asOf: Date, notes: string[]): Promise<BookContext | undefined> {
+  const cfg = exportConfigFromEnv();
+  if (!cfg) return undefined;
+  try {
+    return bookContextFromExport(await makeExportClient(cfg)(etToUtc(date, "00:00").toISOString()), asOf);
+  } catch (err) {
+    notes.push(`book context unavailable: ${err instanceof Error ? err.message : err}`);
+    return { vol: null, open: null, note: "oo-trading export failed at 10:50; VIX and open positions unknown" };
+  }
 }
 
 function summarize(calls: StrategyCall[]): string {

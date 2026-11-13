@@ -9,6 +9,9 @@ import type { Bar, NewsItem } from "@/lib/alpaca";
 import { etToUtc } from "@/lib/time";
 import { flatSession, makeBars, session } from "./fixtures/sample";
 
+// The off-window ATR history backfill is covered in atr-backfill.test.ts; here ticks must stay Alpaca-free.
+process.env.ATR_BACKFILL = "off";
+
 // ------------------------------------------------------------- in-memory db
 const mem = vi.hoisted(() => ({
   bars: new Map<string, any>(),
@@ -69,6 +72,9 @@ vi.mock("@/lib/db", async () => ({
   setEmailProviderId: async () => {},
   releaseEmail: async (date: string) => void mem.emails.delete(date),
 }));
+
+// 10:50 call versions live in Postgres; here a fixed v2.
+vi.mock("@/lib/book-version", () => ({ ensureBookVersion: async () => ({ id: 2, number: 2, hash: "h", model: "test-model", createdAt: "2024-03-11T00:00:00Z" }) }));
 
 const llmMock = vi.hoisted(() => ({ fn: vi.fn() }));
 vi.mock("@/lib/llm", () => ({ runLlmDecision: (...a: any[]) => llmMock.fn(...a) }));

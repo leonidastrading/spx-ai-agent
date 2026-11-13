@@ -57,6 +57,16 @@ CREATE TABLE IF NOT EXISTS decisions (
   PRIMARY KEY (date, strategy, source)
 );
 
+-- 10:50 call versions (model, prompt, schema, inputs). Calls before versions existed have version_id NULL = v1.
+CREATE TABLE IF NOT EXISTS book_versions (
+  id serial PRIMARY KEY,
+  hash text NOT NULL UNIQUE,
+  model text,
+  spec jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE decisions ADD COLUMN IF NOT EXISTS version_id int;
+
 -- The LLM's market read and raw output, one row per day.
 CREATE TABLE IF NOT EXISTS llm_reads (
   date date PRIMARY KEY,
@@ -108,6 +118,10 @@ CREATE TABLE IF NOT EXISTS settings (
 
 -- Append-only guard: logged decisions, versions, verdicts and ideas are never edited or deleted.
 CREATE OR REPLACE FUNCTION forbid_change() RETURNS trigger AS $fn$ BEGIN RAISE EXCEPTION 'table % is append-only', TG_TABLE_NAME; END $fn$ LANGUAGE plpgsql;
+-- 10:50 calls and their versions are never edited or deleted.
+CREATE OR REPLACE TRIGGER book_versions_ro BEFORE UPDATE OR DELETE ON book_versions FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE OR REPLACE TRIGGER decisions_ro BEFORE UPDATE OR DELETE ON decisions FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE OR REPLACE TRIGGER decisions_rot BEFORE TRUNCATE ON decisions FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
 
 CREATE TABLE IF NOT EXISTS trader_versions (
   id serial PRIMARY KEY,

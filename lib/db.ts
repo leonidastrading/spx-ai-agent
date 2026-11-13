@@ -135,6 +135,18 @@ export async function upsertMorningHistory(date: string, atr: number | null, ret
   );
 }
 
+/** Rows that count as ATR history before `date`, plus days already tried without data (so a full history is cheap to detect). */
+export async function atrHistoryCount(date: string): Promise<number> {
+  const rows = await q(`SELECT count(*) AS n FROM morning_history WHERE date < $1`, [date]);
+  return Number(rows[0]?.n ?? 0);
+}
+
+/** Dates with a morning_history row (any source, ATR or not) on or after `from`. */
+export async function morningHistoryDates(from: string): Promise<Set<string>> {
+  const rows = await q(`SELECT to_char(date, 'YYYY-MM-DD') AS d FROM morning_history WHERE date >= $1`, [from]);
+  return new Set(rows.map((r) => r.d as string));
+}
+
 /** Up to `limit` prior days' atr30_bp, oldest first, strictly before `date`. */
 export async function atrHistory(date: string, limit: number): Promise<number[]> {
   const rows = await q(
@@ -149,19 +161,19 @@ export async function hasDecision(date: string, source: "rule" | "llm"): Promise
   return rows.length > 0;
 }
 
-export async function insertDecisions(date: string, source: "rule" | "llm", calls: Array<Omit<StrategyCall, "call"> & { call: string }>): Promise<number> {
+export async function insertDecisions(date: string, source: "rule" | "llm", calls: Array<Omit<StrategyCall, "call"> & { call: string }>, versionId: number | null = null): Promise<number> {
   if (!calls.length) return 0;
   const rows = await q(
-    `INSERT INTO decisions (date, strategy, source, call, confidence, reason)
-     SELECT $1::date, s, $2, c, conf, r FROM unnest($3::text[], $4::text[], $5::float8[], $6::text[]) AS t(s, c, conf, r)
+    `INSERT INTO decisions (date, strategy, source, call, confidence, reason, version_id)
+     SELECT $1::date, s, $2, c, conf, r, $7 FROM unnest($3::text[], $4::text[], $5::float8[], $6::text[]) AS t(s, c, conf, r)
      ON CONFLICT (date, strategy, source) DO NOTHING RETURNING 1`,
-    [date, source, calls.map((c) => c.strategy), calls.map((c) => c.call), calls.map((c) => c.confidence), calls.map((c) => c.reason)],
+    [date, source, calls.map((c) => c.strategy), calls.map((c) => c.call), calls.map((c) => c.confidence), calls.map((c) => c.reason), versionId],
   );
   return rows.length;
 }
 
-export async function decisionsForDate(date: string): Promise<Array<{ strategy: string; source: string; call: string; confidence: number | null; reason: string }>> {
-  return (await q(`SELECT strategy, source, call, confidence, reason FROM decisions WHERE date = $1 ORDER BY source, strategy`, [date])) as any;
+export async function decisionsForDate(date: string): Promise<Array<{ strategy: string; source: string; call: string; confidence: number | null; reason: string; version_id: number | null }>> {
+  return (await q(`SELECT strategy, source, call, confidence, reason, version_id FROM decisions WHERE date = $1 ORDER BY source, strategy`, [date])) as any;
 }
 
 export async function allDecisions(): Promise<Array<{ date: string; strategy: string; source: string; call: string; confidence: number | null; reason: string }>> {

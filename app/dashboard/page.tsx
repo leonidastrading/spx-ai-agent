@@ -2,6 +2,8 @@ import LineChart from "@/components/LineChart";
 import SetupNotice from "@/components/SetupNotice";
 import { SCHEDULE } from "@/config/rules";
 import * as store from "@/lib/db";
+import { listBookVersions } from "@/lib/book-version";
+import { ruleInactive } from "@/lib/decision";
 import { categorize, DROP_LABELS, screenHeadlines, topHeadlines, type DropReason } from "@/lib/news";
 import { toEt } from "@/lib/time";
 
@@ -23,6 +25,7 @@ const etHhmm = (iso: string) => toEt(new Date(iso)).hhmm;
 
 function CallCell({ call, confidence }: { call?: string; confidence?: number | null }) {
   if (!call) return <span className="muted">—</span>;
+  if (call === "inactive") return <span className="muted" title="rule had too little ATR history">inactive</span>;
   return (
     <span className={`call call-${call}`}>
       {call}
@@ -36,14 +39,17 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? sp.date! : toEt(new Date()).date;
   if (!store.hasDatabase()) return <SetupNotice />;
 
-  const [cfg, featureRows, decisions, read, history, runs] = await Promise.all([
+  const [cfg, featureRows, decisions, read, history, runs, versions] = await Promise.all([
     store.loadSettings(),
     store.featuresForDate(date),
     store.decisionsForDate(date),
     store.llmRead(date),
     store.allDecisions(),
     store.recentRuns(8),
+    listBookVersions().catch(() => []),
   ]);
+  const vId = decisions.find((d) => d.source === "llm")?.version_id ?? decisions[0]?.version_id ?? null;
+  const vLabel = decisions.length ? `v${vId === null ? 1 : (versions.find((v) => v.id === vId)?.number ?? "?")}` : null;
   const latest = featureRows.length ? featureRows[featureRows.length - 1].data : null;
   const news = latest ? await store.loadNews(new Date(latest.prior_close_at), new Date(latest.as_of)) : [];
   const top = topHeadlines(news, 30, cfg.keywords);
@@ -59,7 +65,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   for (const d of history) {
     const day = hist.get(d.date) ?? new Map();
     const cell = day.get(d.strategy) ?? {};
-    cell[d.source as "llm" | "rule"] = d.call;
+    // A rule call made without its 60 days of ATR history is shown as inactive, not as a call.
+    cell[d.source as "llm" | "rule"] = d.source === "rule" && ruleInactive(d.reason) ? "inactive" : d.call;
     day.set(d.strategy, cell);
     hist.set(d.date, day);
   }
@@ -78,7 +85,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </form>
 
       <section className="card">
-        <h2>Calls for {date} (decided {SCHEDULE.decisionAt} ET)</h2>
+        <h2>Calls for {date} (decided {SCHEDULE.decisionAt} ET){vLabel && <span className="muted small"> · version {vLabel}</span>}</h2>
         {llmError ? (
           <p className="call-error">LLM error: {llmError.reason}</p>
         ) : read?.market_read ? (
@@ -97,7 +104,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                   <td><b>{n}</b></td>
                   <td><CallCell call={llm.get(n)?.call} confidence={llm.get(n)?.confidence} /></td>
                   <td className="secondary small">{llm.get(n)?.reason}</td>
-                  <td><CallCell call={rule.get(n)?.call} /></td>
+                  <td>{ruleInactive(rule.get(n)?.reason) ? <span className="muted">{ruleInactive(rule.get(n)?.reason)}</span> : <CallCell call={rule.get(n)?.call} />}</td>
                 </tr>
               ))}
             </tbody>

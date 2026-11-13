@@ -180,9 +180,20 @@ export function parseLlmOutput(text: string, names: string[] = STRATEGY_NAMES): 
   };
 }
 
+/** Volatility and the live book at 10:50 ET, from oo-trading's read-only export (Schwab). */
+export interface BookContext {
+  vol: { vix: number | null; vixChangePct: number | null; vix9d: number | null; vix9dChangePct: number | null; asOf: string } | null;
+  /** Entries open at 10:50 ET; null when the export doesn't provide them. */
+  open: Array<{ bot: string | null; legs: string; expiry: string; contracts: number; openPl: number }> | null;
+  /** Why something is missing (shown to the model). */
+  note?: string;
+}
+
 export interface PromptInput {
   date: string;
   features: Features;
+  /** VIX / VIX9D and open positions (v2). Absent = not available. */
+  book?: BookContext;
   /** Defaults to config/strategies.ts. */
   strategies?: StrategyDef[];
   headlines: Array<{ ts: string; headline: string }>;
@@ -194,7 +205,8 @@ Context:
 - Most strategies are short-premium 0DTE structures that lose on large intraday moves, trend days and volatility expansions. Their edge comes from running on most days; skipping costs money on quiet days. Recommend "skip" only when the morning gives a specific reason the strategy's loss scenario is unusually likely, and "reduce" when the risk is elevated but unclear.
 - Some strategies only trigger on a setup (e.g. a down-trend day, a breakout, VIX up on the day or above a level, an FOMC day); judge them on whether today looks like that setup and how the risk looks if it triggers.
 - Some strategies buy premium (e.g. a long straddle) and profit from big moves; for those, a volatile morning is not by itself a reason to reduce. Read each strategy's description.
-- Prices are SPY (a proxy for SPX). VIXY is a VIX-futures ETF, so its move is a rough proxy for VIX's change; the VIX level itself is not provided.
+- Prices are SPY (a proxy for SPX). The VIX and VIX9D levels and their change since the prior close are given when available (VIXY, a VIX-futures ETF, is also in the features as a rough proxy). VIX9D above VIX means near-term stress.
+- The book's open positions (bot, strikes, expiry, size, open P/L) are listed: weigh each new entry against the risk already on.
 - You are advising in shadow mode; no orders are placed from your output.
 
 Answer with JSON only, no prose outside it, matching this shape:
@@ -218,6 +230,35 @@ ${strategies}
 Morning features (returns in %, ranges/ATR in basis points of the open, range_pos 0=low 1=high, kw_* are keyword-category headline counts since the prior close):
 ${feat}
 
-Most relevant headlines since the prior close (UTC timestamp, headline):
+Volatility and the book at 10:50 ET (from Schwab, via oo-trading):
+${renderBook(p.book)}
+
+Most relevant headlines since the prior close (UTC timestamp, headline; press releases and single-stock halts removed):
 ${heads}`;
+}
+
+const fmt = (x: number | null, d = 2) => (x === null ? "n/a" : x.toFixed(d));
+const sgn = (x: number | null) => (x === null ? "n/a" : `${x >= 0 ? "+" : ""}${x.toFixed(1)}%`);
+
+export function renderBook(b: BookContext | undefined): string {
+  if (!b) return "unavailable (oo-trading export not connected)";
+  const vol = b.vol
+    ? `VIX ${fmt(b.vol.vix)} (${sgn(b.vol.vixChangePct)} vs prior close), VIX9D ${fmt(b.vol.vix9d)} (${sgn(b.vol.vix9dChangePct)})${b.vol.vix && b.vol.vix9d ? `, VIX9D/VIX ${(b.vol.vix9d / b.vol.vix).toFixed(2)}` : ""}`
+    : "VIX/VIX9D unavailable";
+  const open =
+    b.open === null
+      ? "Open positions: not provided by the export."
+      : b.open.length
+        ? `Open positions (${b.open.length}):\n${b.open.map((o) => `- ${o.bot ?? "unmatched"}: ${o.legs}, exp ${o.expiry}, ${o.contracts} lots, open P/L $${Math.round(o.openPl).toLocaleString("en-US")}`).join("\n")}`
+        : "Open positions: none.";
+  return [vol, open, b.note].filter(Boolean).join("\n");
+}
+
+/**
+ * "inactive (8/60)" when a rule call was made without enough ATR history (its reason says the ATR leg was
+ * skipped), else null. Such calls are shown as inactive and left out of comparisons.
+ */
+export function ruleInactive(reason: string | null | undefined): string | null {
+  const m = reason?.match(/ATR leg skipped \((\d+)\/(\d+) days/);
+  return m ? `inactive (${m[1]}/${m[2]})` : null;
 }
