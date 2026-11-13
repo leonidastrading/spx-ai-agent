@@ -3,6 +3,8 @@ import SetupNotice from "@/components/SetupNotice";
 import { SCHEDULE } from "@/config/rules";
 import * as store from "@/lib/db";
 import { listBookVersions } from "@/lib/book-version";
+import { loadBookEntries, LIVE_SINCE, syncedThrough, type BookEntryRow } from "@/lib/book-entries";
+import { buildLiveScore, STATUS_LABEL, type DayStatus } from "@/lib/live-scoring";
 import { ruleInactive } from "@/lib/decision";
 import { categorize, DROP_LABELS, screenHeadlines, topHeadlines, type DropReason } from "@/lib/news";
 import { toEt } from "@/lib/time";
@@ -23,6 +25,58 @@ const CHARTS: Array<{ key: string; title: string; unit: string; digits?: number 
 
 const etHhmm = (iso: string) => toEt(new Date(iso)).hhmm;
 
+const usdShort = (x: number) => `${x < 0 ? "−" : ""}$${Math.abs(x).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+const WEIGHT: Record<string, number> = { run: 1, reduce: 0.5, skip: 0 };
+
+/** Live P/L of the bots that entered on `date` (after 10:50), as run and as the LLM advised. */
+function DayScore({ date, names, llm, entries, status }: {
+  date: string;
+  names: string[];
+  llm: Map<string, { call: string }>;
+  entries: BookEntryRow[];
+  status: (bot: string) => DayStatus | undefined;
+}) {
+  const rows = names.map((n) => ({ n, s: status(n), call: llm.get(n)?.call })).filter((r) => r.s && r.s.kind !== "no_entry" && r.s.kind !== "not_synced");
+  if (date < LIVE_SINCE) return null;
+  const scored = rows.filter((r) => r.s!.kind === "scored" && r.call && r.call !== "error");
+  const run = scored.reduce((a, r) => a + (r.s as { pl: number }).pl, 0);
+  const adv = scored.reduce((a, r) => a + (r.s as { pl: number }).pl * (WEIGHT[r.call!] ?? 1), 0);
+  const today = entries.some((e) => e.entryDate === date);
+  return (
+    <>
+      <h3 className="small secondary" style={{ margin: "14px 0 4px" }}>Scoring for {date}: live Schwab fills</h3>
+      {rows.length === 0 ? (
+        <p className="muted small">{today ? "No bot entered after the 10:50 call." : "No fills stored for this day yet (they sync during the session and after the close)."}</p>
+      ) : (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>Bot</th><th>LLM call</th><th className="num">Fills</th><th className="num">P/L as run</th><th className="num">P/L as advised</th><th className="num">Difference</th></tr></thead>
+            <tbody>
+              {rows.map(({ n, s, call }) => {
+                if (s!.kind !== "scored") return <tr key={n}><td>{n}</td><td><CallCell call={call} /></td><td colSpan={4} className="muted small">{STATUS_LABEL[s!.kind]}</td></tr>;
+                const w = call && call !== "error" ? (WEIGHT[call] ?? 1) : null;
+                return (
+                  <tr key={n}>
+                    <td>{n}</td><td><CallCell call={call} /></td><td className="num">{s!.entries}</td>
+                    <td className={`num ${s!.pl > 0 ? "pos" : s!.pl < 0 ? "neg" : ""}`}>{usdShort(s!.pl)}</td>
+                    <td className="num">{w === null ? "—" : usdShort(s!.pl * w)}</td>
+                    <td className="num">{w === null ? "—" : usdShort(s!.pl * w - s!.pl)}</td>
+                  </tr>
+                );
+              })}
+              <tr style={{ fontWeight: 600 }}>
+                <td>Day</td><td /><td className="num">{scored.reduce((a, r) => a + (r.s as { entries: number }).entries, 0)}</td>
+                <td className="num">{usdShort(run)}</td><td className="num">{usdShort(adv)}</td><td className="num">{usdShort(adv - run)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="muted small" style={{ marginBottom: 0 }}>As advised: run 100%, reduce 50%, skip 0%. Bots that didn&apos;t enter are left out (n/a – no entry).</p>
+    </>
+  );
+}
+
 function CallCell({ call, confidence }: { call?: string; confidence?: number | null }) {
   if (!call) return <span className="muted">—</span>;
   if (call === "inactive") return <span className="muted" title="rule had too little ATR history">inactive</span>;
@@ -39,7 +93,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const date = /^\d{4}-\d{2}-\d{2}$/.test(sp.date ?? "") ? sp.date! : toEt(new Date()).date;
   if (!store.hasDatabase()) return <SetupNotice />;
 
-  const [cfg, featureRows, decisions, read, history, runs, versions] = await Promise.all([
+  const [cfg, featureRows, decisions, read, history, runs, versions, entries, through] = await Promise.all([
     store.loadSettings(),
     store.featuresForDate(date),
     store.decisionsForDate(date),
@@ -47,6 +101,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     store.allDecisions(),
     store.recentRuns(8),
     listBookVersions().catch(() => []),
+    loadBookEntries().catch(() => []),
+    syncedThrough().catch(() => null),
   ]);
   const vId = decisions.find((d) => d.source === "llm")?.version_id ?? decisions[0]?.version_id ?? null;
   const vLabel = decisions.length ? `v${vId === null ? 1 : (versions.find((v) => v.id === vId)?.number ?? "?")}` : null;
@@ -55,6 +111,16 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const top = topHeadlines(news, 30, cfg.keywords);
   const screened = screenHeadlines(news, cfg.keywords);
   const STRATEGY_NAMES = cfg.strategies.map((s) => s.name);
+  // Live fills per bot and day (since Oct 19): scored only where the bot entered after 10:50.
+  const live = buildLiveScore({
+    calls: history,
+    entries,
+    names: STRATEGY_NAMES,
+    versionNumber: (id) => (id === null ? 1 : (versions.find((v) => v.id === id)?.number ?? 1)),
+    syncedThrough: through,
+    sims: 0,
+  });
+  const dayStatus = (d: string, bot: string) => (d >= LIVE_SINCE ? live.status.get(d)?.get(bot) : undefined);
 
   const llm = new Map(decisions.filter((d) => d.source === "llm").map((d) => [d.strategy, d]));
   const rule = new Map(decisions.filter((d) => d.source === "rule").map((d) => [d.strategy, d]));
@@ -111,6 +177,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
           </table>
         </div>
         {rule.size > 0 && <p className="muted small">Rule: {rule.values().next().value?.reason}</p>}
+        <DayScore date={date} names={STRATEGY_NAMES} llm={llm} entries={entries} status={(bot) => dayStatus(date, bot)} />
       </section>
 
       <section className="card">
@@ -181,11 +248,16 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
                       <span className="call call-error">LLM error</span> / rule <CallCell call={day.get(STRATEGY_NAMES[0])?.rule} />
                     </td>
                   ) : (
-                    STRATEGY_NAMES.map((n) => (
-                      <td key={n} className="small">
-                        <CallCell call={day.get(n)?.llm} /> <span className="muted">/</span> <CallCell call={day.get(n)?.rule} />
-                      </td>
-                    ))
+                    STRATEGY_NAMES.map((n) => {
+                      const st = dayStatus(d, n);
+                      return (
+                        <td key={n} className="small">
+                          <CallCell call={day.get(n)?.llm} /> <span className="muted">/</span> <CallCell call={day.get(n)?.rule} />
+                          {st?.kind === "no_entry" && <div className="muted">n/a – no entry</div>}
+                          {st?.kind === "scored" && <div className={st.pl > 0 ? "pos" : st.pl < 0 ? "neg" : "muted"}>{usdShort(st.pl)}</div>}
+                        </td>
+                      );
+                    })
                   )}
                 </tr>
               ))}

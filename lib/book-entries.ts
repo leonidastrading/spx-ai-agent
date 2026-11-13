@@ -131,3 +131,14 @@ export async function syncBookHistory(fetchExport: (since: string) => Promise<Oo
   ]);
   return n;
 }
+
+/** Last ET date whose fills are fully stored: the sync date if it ran after 16:30 ET, else the day before. */
+export async function syncedThrough(): Promise<string | null> {
+  const v = (await q(`SELECT value FROM settings WHERE key = $1`, [SYNC_KEY]))[0]?.value;
+  if (!v?.at) return null;
+  const et = toEt(new Date(v.at));
+  if (et.minutes >= 16 * 60 + 30) return et.date;
+  const d = new Date(`${et.date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - 1);
+  return d.toISOString().slice(0, 10);
+}

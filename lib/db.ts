@@ -176,8 +176,8 @@ export async function decisionsForDate(date: string): Promise<Array<{ strategy: 
   return (await q(`SELECT strategy, source, call, confidence, reason, version_id FROM decisions WHERE date = $1 ORDER BY source, strategy`, [date])) as any;
 }
 
-export async function allDecisions(): Promise<Array<{ date: string; strategy: string; source: string; call: string; confidence: number | null; reason: string }>> {
-  const rows = await q(`SELECT to_char(date, 'YYYY-MM-DD') AS date, strategy, source, call, confidence, reason FROM decisions ORDER BY date DESC, source, strategy`);
+export async function allDecisions(): Promise<Array<{ date: string; strategy: string; source: string; call: string; confidence: number | null; reason: string; version_id: number | null }>> {
+  const rows = await q(`SELECT to_char(date, 'YYYY-MM-DD') AS date, strategy, source, call, confidence, reason, version_id FROM decisions ORDER BY date DESC, source, strategy`);
   return rows as any;
 }
 
