@@ -8,6 +8,8 @@ import { RULES, SCHEDULE, SYMBOLS } from "@/config/rules";
 import { AlpacaClient, credsFromEnv, referenceHostFromEnv, type Feed } from "./alpaca";
 import { backfillAtrBatch } from "./atr-backfill";
 import { bookContextFromExport } from "./book-context";
+import { lastFullSync, LIVE_SINCE, syncBookHistory } from "./book-entries";
+import { quoteSnapshotsSince } from "./entry/store";
 import { ensureBookVersion } from "./book-version";
 import { exportConfigFromEnv, makeExportClient } from "./entry/client";
 import type { BookContext } from "./decision";
@@ -105,6 +107,22 @@ async function skipRun(reason: string, now?: Date): Promise<TickResult> {
       if (r.filled || r.missing) notes.push(`ATR history backfill: +${r.filled} days (${r.have} with ATR, ${r.missing} still to fetch)`);
     } catch (err) {
       notes.push(`ATR history backfill failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+  // Once a day outside the session, store every live entry since Oct 19 from oo-trading (for scoring).
+  if (now) {
+    const et = toEt(now);
+    const off = et.weekday === 0 || et.weekday === 6 || et.minutes >= 16 * 60 + 30 || et.minutes < 9 * 60;
+    const exportCfg = exportConfigFromEnv();
+    if (off && exportCfg) {
+      try {
+        if ((await lastFullSync()) !== et.date) {
+          const n = await syncBookHistory(makeExportClient(exportCfg), now, await quoteSnapshotsSince(`${LIVE_SINCE}T00:00:00Z`));
+          notes.push(`book entries synced: ${n}`);
+        }
+      } catch (err) {
+        notes.push(`book entry sync failed: ${err instanceof Error ? err.message : err}`);
+      }
     }
   }
   const id = await store.startRun("skip", null);

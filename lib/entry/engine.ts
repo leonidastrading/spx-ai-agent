@@ -16,6 +16,7 @@ import { acquireLock, econFor, econUpcoming, releaseLock } from "../trader/store
 import type { OoEntry, OoExport } from "./contract";
 import type { FetchExport } from "./client";
 import type { EntryCallModel } from "./llm";
+import { entriesFromExport, upsertBookEntries } from "../book-entries";
 import { resolveBot } from "./matcher";
 import { buildPacket, packetHash, type RelBars } from "./packet";
 import { entryVersionHash, entryVersionSpec, parseEntryReply, renderEntryPrompt } from "./prompt";
@@ -58,6 +59,7 @@ export async function runEntryTick(deps: EntryDeps): Promise<EntryTickResult> {
 
     const until = now.getTime() + (deps.loopSeconds ?? ENTRY.loopSeconds) * 1000;
     let relCache: { at: number; rel: RelBars } | null = null;
+    let entriesSynced = false;
     for (;;) {
       let exp: OoExport | null = null;
       try {
@@ -69,6 +71,11 @@ export async function runEntryTick(deps: EntryDeps): Promise<EntryTickResult> {
         await es.saveBookSnapshot(exp.asOf, exp.book);
         await es.saveNlv(exp.account ?? null, (d) => etToUtc(d, "16:00").toISOString());
         await es.saveQuoteSnapshots(exp.market.snapshots);
+        // Keep the book's entries for scoring the 10:50 calls (once per tick is enough).
+        if (!entriesSynced) {
+          await upsertBookEntries(entriesFromExport(exp, await es.quoteSnapshotsSince(dayStart)));
+          entriesSynced = true;
+        }
         await es.upsertOutcomes(exp.outcomes, (iso) => toEt(new Date(iso)).date);
         if (toEt(deps.clock()).minutes >= 16 * 60) await es.upsertMarketDay(et.date, exp.market.vix.last, exp.market.vix.prevClose);
         if (calling) {

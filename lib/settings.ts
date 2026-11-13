@@ -141,7 +141,7 @@ export function mergeSettings(stored: unknown): Settings {
 }
 
 /** The default bots a user may already have under their own names (e.g. "2DTE<20", "3Δ 4DTE"). */
-const EQUIVALENT: Record<string, RegExp> = {
+export const EQUIVALENT: Record<string, RegExp> = {
   "2DTE VIX<20": /2\s*dte.*<\s*20/i,
   "2DTE VIX>20": /2\s*dte.*>\s*=?\s*20/i,
   "VIX-up VIX<20": /vix[\s-]*up.*<\s*20/i,
@@ -176,6 +176,16 @@ export function migrateLegacyBots(strategies: StrategyDef[], ooMap: Record<strin
 function withDefaultExcludes(k: KeywordConfig): KeywordConfig {
   const byKey = new Map(DEFAULT_SETTINGS.keywords.categories.map((c) => [c.key, c]));
   return { ...k, categories: k.categories.map((c) => (c.exclude || !byKey.get(c.key)?.exclude ? c : { ...c, exclude: byKey.get(c.key)!.exclude })) };
+}
+
+/**
+ * The user's own name for a default bot name ("2DTE VIX<20" may be "2DTE<20", "3 Delta" may be "3Δ 4DTE"), or
+ * null when the settings have no such bot.
+ */
+export function settingsBotName(defaultName: string, names: string[]): string | null {
+  if (names.includes(defaultName)) return defaultName;
+  const re = EQUIVALENT[defaultName];
+  return (re && names.find((n) => re.test(n))) ?? null;
 }
 
 export const strategyNames = (s: Settings) => s.strategies.map((x) => x.name);

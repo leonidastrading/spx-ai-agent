@@ -67,6 +67,29 @@ CREATE TABLE IF NOT EXISTS book_versions (
 );
 ALTER TABLE decisions ADD COLUMN IF NOT EXISTS version_id int;
 
+-- Every Schwab entry since Oct 19, 2026 as oo-trading reports it (live fills, not uploads), refreshed on sync.
+-- The bot is stored as oo-trading names it plus VIX at entry; the settings bot is derived when scoring.
+CREATE TABLE IF NOT EXISTS book_entries (
+  entry_id text PRIMARY KEY,
+  entry_date date NOT NULL,          -- ET date of the fill (calls are matched on this, not the close date)
+  filled_at timestamptz NOT NULL,
+  raw_bot text,
+  match text NOT NULL,
+  match_confidence double precision NOT NULL,
+  vix_at_entry double precision,
+  vix_source text,                   -- snapshot | daily_close | null
+  structure text NOT NULL,
+  legs jsonb NOT NULL,
+  contracts double precision NOT NULL,
+  net_price double precision NOT NULL,
+  status text NOT NULL,              -- open | closed
+  pl double precision,
+  closed_at timestamptz,
+  how text,
+  synced_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS book_entries_date_idx ON book_entries (entry_date);
+
 -- The LLM's market read and raw output, one row per day.
 CREATE TABLE IF NOT EXISTS llm_reads (
   date date PRIMARY KEY,
