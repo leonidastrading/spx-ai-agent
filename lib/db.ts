@@ -82,12 +82,12 @@ export async function insertNews(items: NewsItem[]): Promise<number> {
   for (let i = 0; i < items.length; i += CHUNK) {
     const c = items.slice(i, i + CHUNK);
     const rows = await q(
-      `INSERT INTO news (id, ts, headline, summary, symbols, source, url)
-       SELECT id, ts, headline, summary, string_to_array(symbols, '|'), source, url
-       FROM unnest($1::bigint[], $2::timestamptz[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[])
-         AS t(id, ts, headline, summary, symbols, source, url)
+      `INSERT INTO news (id, ts, headline, summary, symbols, source, url, author)
+       SELECT id, ts, headline, summary, string_to_array(symbols, '|'), source, url, author
+       FROM unnest($1::bigint[], $2::timestamptz[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[])
+         AS t(id, ts, headline, summary, symbols, source, url, author)
        ON CONFLICT (id) DO NOTHING RETURNING 1`,
-      [c.map((x) => x.id), c.map((x) => x.ts), c.map((x) => x.headline), c.map((x) => x.summary), c.map((x) => x.symbols.join("|")), c.map((x) => x.source), c.map((x) => x.url)],
+      [c.map((x) => x.id), c.map((x) => x.ts), c.map((x) => x.headline), c.map((x) => x.summary), c.map((x) => x.symbols.join("|")), c.map((x) => x.source), c.map((x) => x.url), c.map((x) => x.author ?? "")],
     );
     n += rows.length;
   }
@@ -111,8 +111,8 @@ export async function loadBars(from: Date, to: Date): Promise<Bar[]> {
 }
 
 export async function loadNews(from: Date, to: Date): Promise<NewsItem[]> {
-  const rows = await q(`SELECT id, ts, headline, summary, symbols, source, url FROM news WHERE ts >= $1 AND ts < $2 ORDER BY ts`, [from.toISOString(), to.toISOString()]);
-  return rows.map((r) => ({ id: Number(r.id), ts: new Date(r.ts).toISOString(), headline: r.headline, summary: r.summary, symbols: r.symbols ?? [], source: r.source, url: r.url }));
+  const rows = await q(`SELECT id, ts, headline, summary, symbols, source, url, author FROM news WHERE ts >= $1 AND ts < $2 ORDER BY ts`, [from.toISOString(), to.toISOString()]);
+  return rows.map((r) => ({ id: Number(r.id), ts: new Date(r.ts).toISOString(), headline: r.headline, summary: r.summary, symbols: r.symbols ?? [], source: r.source, url: r.url, author: r.author ?? "" }));
 }
 
 export async function upsertFeatures(date: string, minuteEt: string, f: Features): Promise<void> {

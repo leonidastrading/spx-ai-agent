@@ -1,5 +1,6 @@
 /** Trader inputs, prompt and version identity. Pure. */
 
+import { NEWS_SCREEN } from "@/config/keywords";
 import { createHash } from "node:crypto";
 import { MODEL_PRICES, TRADER } from "@/config/trader";
 import type { Bar } from "../alpaca";
@@ -197,7 +198,8 @@ export const hashInputs = (i: TraderInputs) => sha256(canonical(i));
 
 /** Everything that defines a version: model, effort, prompt, reply schema and rules. */
 export function versionSpec(model: string, effort: string) {
-  return { model, effort, system: TRADER_SYSTEM_PROMPT, schema: REPLY_JSON_SCHEMA, rules: TRADER };
+  // newsScreen: the headlines the model sees are screened (config/keywords.ts NEWS_SCREEN); a change is a new version.
+  return { model, effort, system: TRADER_SYSTEM_PROMPT, schema: REPLY_JSON_SCHEMA, rules: TRADER, newsScreen: NEWS_SCREEN };
 }
 export const versionHash = (model: string, effort: string) => sha256(canonical(versionSpec(model, effort)));
 

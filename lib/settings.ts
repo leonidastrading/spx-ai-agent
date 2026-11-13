@@ -84,6 +84,8 @@ export const settingsSchema = z
             label: z.string().trim().min(1).max(80),
             terms,
             megaCapOnly: z.boolean().optional(),
+            scope: z.enum(["market", "company"]).optional(),
+            exclude: terms.optional(),
           }),
         )
         .max(30),
@@ -132,7 +134,7 @@ export function mergeSettings(stored: unknown): Settings {
     email: { ...DEFAULT_SETTINGS.email, ...(s.email ?? {}) },
     strategies,
     ooMap,
-    keywords: { ...DEFAULT_SETTINGS.keywords, ...(s.keywords ?? {}) },
+    keywords: withDefaultExcludes({ ...DEFAULT_SETTINGS.keywords, ...(s.keywords ?? {}) }),
   };
   const v = validateSettings(candidate);
   return v.ok ? v.settings : DEFAULT_SETTINGS;
@@ -168,6 +170,12 @@ export function migrateLegacyBots(strategies: StrategyDef[], ooMap: Record<strin
     strategies: merged,
     ooMap: Object.fromEntries(Object.entries(ooMap).filter(([, v]) => live.has(v))),
   };
+}
+
+/** Saved keyword categories from before exclude lists existed get the defaults' exclude list (same key). */
+function withDefaultExcludes(k: KeywordConfig): KeywordConfig {
+  const byKey = new Map(DEFAULT_SETTINGS.keywords.categories.map((c) => [c.key, c]));
+  return { ...k, categories: k.categories.map((c) => (c.exclude || !byKey.get(c.key)?.exclude ? c : { ...c, exclude: byKey.get(c.key)!.exclude })) };
 }
 
 export const strategyNames = (s: Settings) => s.strategies.map((x) => x.name);

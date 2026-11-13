@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { DAY_TYPE_RULES, ENTRY, LIVE_PROFILES } from "@/config/entry";
+import { NEWS_SCREEN } from "@/config/keywords";
 import { canonicalJson, sha256, type Packet } from "./packet";
 
 export const VERDICTS = ["take", "reduce", "skip"] as const;
@@ -104,7 +105,7 @@ export function entryVersionSpec(model: string, effort: string) {
   return {
     model, effort, system: ENTRY_SYSTEM_PROMPT, schema: REPLY_JSON_SCHEMA, packetLayout: ENTRY.packetLayout, rules: ENTRY, dayTypes: DAY_TYPE_RULES,
     // v2: over-long text is trimmed, not an error; bot matching falls back to how bots fill live.
-    replyHandling: "trim-to-limit", liveProfiles: LIVE_PROFILES,
+    replyHandling: "trim-to-limit", liveProfiles: LIVE_PROFILES, newsScreen: NEWS_SCREEN,
   };
 }
 export const entryVersionHash = (model: string, effort: string) => sha256(canonicalJson(entryVersionSpec(model, effort)));

@@ -2,7 +2,7 @@ import LineChart from "@/components/LineChart";
 import SetupNotice from "@/components/SetupNotice";
 import { SCHEDULE } from "@/config/rules";
 import * as store from "@/lib/db";
-import { categorize, topHeadlines } from "@/lib/news";
+import { categorize, DROP_LABELS, screenHeadlines, topHeadlines, type DropReason } from "@/lib/news";
 import { toEt } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +47,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const latest = featureRows.length ? featureRows[featureRows.length - 1].data : null;
   const news = latest ? await store.loadNews(new Date(latest.prior_close_at), new Date(latest.as_of)) : [];
   const top = topHeadlines(news, 30, cfg.keywords);
+  const screened = screenHeadlines(news, cfg.keywords);
   const STRATEGY_NAMES = cfg.strategies.map((s) => s.name);
 
   const llm = new Map(decisions.filter((d) => d.source === "llm").map((d) => [d.strategy, d]));
@@ -139,7 +140,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       </section>
 
       <section className="card">
-        <h2>Headlines since prior close ({news.length}; 30 most relevant shown)</h2>
+        <h2>Headlines since prior close ({screened.kept.length} kept of {news.length}; 30 most relevant shown)</h2>
+        <p className="small muted">
+          Dropped {news.length - screened.kept.length}:{" "}
+          {(Object.keys(screened.dropped) as DropReason[]).map((k) => `${screened.dropped[k]} ${DROP_LABELS[k]}`).join(" · ")}.
+          Tags count only when the headline is about the market (or, for the mega-cap tag, a mega-cap).
+        </p>
         <ul className="headlines">
           {top.map((h) => (
             <li key={h.id}>

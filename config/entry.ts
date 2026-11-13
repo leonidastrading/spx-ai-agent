@@ -5,7 +5,7 @@
 
 export const ENTRY = {
   /** Packet layout version: bump when the packet's shape or contents change (starts a new version). */
-  packetLayout: 2,
+  packetLayout: 3, // 3: headlines screened (press-release wires, non-US / single-stock halts) and subject-matched tags
   /** Below this bot-match confidence the call is logged "no opinion" (no model call). */
   matchMinConfidence: 0.6,
   /** Account drawdown in the packet: Schwab net liquidation value against its high since this date. */

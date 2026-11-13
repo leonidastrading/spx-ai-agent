@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS news (
   url text NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS news_ts_idx ON news (ts);
+ALTER TABLE news ADD COLUMN IF NOT EXISTS author text NOT NULL DEFAULT '';
 
 -- One row per processed minute (ET wall time); data holds the Features object.
 CREATE TABLE IF NOT EXISTS features (
