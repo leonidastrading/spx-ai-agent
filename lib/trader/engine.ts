@@ -14,7 +14,7 @@ import { addDays, etToUtc, hhmmToMinutes, priorSession, sessionOn, toEt, type Se
 import { callTraderModel, type CallModel } from "./llm";
 import { buildInputs, hashInputs, renderUserPrompt, versionHash, versionSpec } from "./prompt";
 import { versionReport } from "./report";
-import { dataProblems, decisionSlot, entryBlocked, parseReply, slotKey, timeExitDue, validateAction, type DayState } from "./rules";
+import { dataProblems, decisionSlot, entryBlocked, parseReplyChecked, slotKey, timeExitDue, validateAction, type DayState } from "./rules";
 import * as ts from "./store";
 import { syncSwing } from "../swing/engine";
 
@@ -269,17 +269,19 @@ async function decide(a: {
     ts.logDecision({ ...base, serverTs: deps.clock().toISOString(), inputsHash, inputs, reply, replyText: call.text, status, reason, modelServed: call.modelServed, usage: call.usage, costUsd: call.costUsd, dataOk: true });
 
   let reply;
+  let trimmed = false;
   try {
     if (call.stopReason === "refusal") throw new Error("model refused");
     if (call.stopReason === "max_tokens") throw new Error("reply truncated");
-    reply = parseReply(call.text);
+    ({ reply, trimmed } = parseReplyChecked(call.text));
   } catch (err) {
     await logged("rejected", `invalid reply: ${err instanceof Error ? err.message : err}`, null);
     return;
   }
 
+  const trimNote = trimmed ? `thesis trimmed to ${TRADER.maxThesisWords} words` : null;
   if (slot.phase === "premarket") {
-    await logged("hold", "pre-market read (no orders before 09:35)", reply);
+    await logged("hold", ["pre-market read (no orders before 09:35)", trimNote].filter(Boolean).join("; "), reply);
     return;
   }
 
@@ -288,7 +290,7 @@ async function decide(a: {
   // Log the full decision before any order is sent.
   const decisionId = await logged(
     !v.ok ? "rejected" : v.kind === "hold" ? "hold" : "accepted",
-    !v.ok ? v.reason : v.kind === "hold" && v.tightenStop !== null ? `tighten stop to ${v.tightenStop}` : null,
+    [!v.ok ? v.reason : v.kind === "hold" && v.tightenStop !== null ? `tighten stop to ${v.tightenStop}` : null, trimNote].filter(Boolean).join("; ") || null,
     reply,
   );
   if (decisionId === null || !v.ok) return; // slot already taken by another tick, or rejected

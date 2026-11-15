@@ -40,19 +40,26 @@ export interface Version {
   model: string;
   effort: string;
   createdAt: string;
+  /** 1, 2, 3… in creation order (ids skip numbers, so they are not shown). */
+  number: number;
 }
 
-const toVersion = (r: Record<string, any>): Version => ({ id: Number(r.id), hash: r.hash, model: r.model, effort: r.effort, createdAt: iso(r.created_at)! });
+const toVersion = (r: Record<string, any>): Version => ({ id: Number(r.id), hash: r.hash, model: r.model, effort: r.effort, createdAt: iso(r.created_at)!, number: Number(r.number ?? r.id) });
 
 /** The version row for this exact spec, created on first use. */
 export async function ensureVersion(hash: string, model: string, effort: string, spec: unknown): Promise<Version> {
-  await q(`INSERT INTO trader_versions (hash, model, effort, spec) VALUES ($1, $2, $3, $4) ON CONFLICT (hash) DO NOTHING`, [hash, model, effort, JSON.stringify(spec)]);
-  const rows = await q(`SELECT id, hash, model, effort, created_at FROM trader_versions WHERE hash = $1`, [hash]);
+  const sel = () => q(`SELECT id, hash, model, effort, created_at, (SELECT count(*) FROM trader_versions o WHERE o.id <= trader_versions.id) AS number FROM trader_versions WHERE hash = $1`, [hash]);
+  // Look first: an INSERT ... ON CONFLICT uses up an id even when the row exists, on every tick.
+  let rows = await sel();
+  if (!rows.length) {
+    await q(`INSERT INTO trader_versions (hash, model, effort, spec) VALUES ($1, $2, $3, $4) ON CONFLICT (hash) DO NOTHING`, [hash, model, effort, JSON.stringify(spec)]);
+    rows = await sel();
+  }
   return toVersion(rows[0]);
 }
 
 export async function listVersions(): Promise<Version[]> {
-  return (await q(`SELECT id, hash, model, effort, created_at FROM trader_versions ORDER BY id`)).map(toVersion);
+  return (await q(`SELECT id, hash, model, effort, created_at, (SELECT count(*) FROM trader_versions o WHERE o.id <= trader_versions.id) AS number FROM trader_versions ORDER BY id`)).map(toVersion);
 }
 
 export async function versionSpec(id: number): Promise<unknown> {

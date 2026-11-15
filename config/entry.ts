@@ -5,7 +5,11 @@
 
 export const ENTRY = {
   /** Packet layout version: bump when the packet's shape or contents change (starts a new version). */
-  packetLayout: 1,
+  packetLayout: 3, // 3: headlines screened (press-release wires, non-US / single-stock halts) and subject-matched tags
+  /** Below this bot-match confidence the call is logged "no opinion" (no model call). */
+  matchMinConfidence: 0.6,
+  /** Account drawdown in the packet: Schwab net liquidation value against its high since this date. */
+  drawdownSince: "2026-10-19",
   /** Advice should be logged within this many seconds of Schwab's fill time... */
   targetLatencySeconds: 60,
   /** ...and is logged "late" and excluded from scoring beyond this. */
@@ -25,8 +29,8 @@ export const ENTRY = {
   /** Decision gate: after this many scored entries AND trading days. */
   gateMinEntries: 300,
   gateMinTradingDays: 40,
-  /** Word limits in the reply. */
-  maxReasonWords: 25,
+  /** Word limits in the reply (v3: 40; at 25, 5 of 6 calls on Nov 12, 2026 had text cut). */
+  maxReasonWords: 40,
   /** Human pre-open call: "skip afternoon group" skips entries at or after this ET time. */
   afternoonFrom: "12:00",
   defaultModel: "claude-opus-5-5",
@@ -35,6 +39,30 @@ export const ENTRY = {
   /** Bands for the "by confidence" table. */
   confidenceBands: [0, 50, 65, 80, 101],
 };
+
+/**
+ * How bots actually fill at Schwab, for entries oo-trading's structure rules don't match (e.g. Nov 11, 2026: the
+ * 13:30 8SMA IC and the 13:35 $8 IC both filled as iron condors with puts 55 / calls 50 wide). Learned from the
+ * live fills Oct 19 – Nov 11, 2026; credit is per contract set in index points, widths in points.
+ * Used only when the export itself has no confident match (its own Live-tab attribution comes first).
+ */
+export interface LiveProfile {
+  bot: string;
+  kind: "iron_condor";
+  dte: number;
+  /** Usual entry times, HH:MM ET. */
+  times: string[];
+  credit: [number, number];
+  /** Tie-breaker only: lot count changes with sizing, so it never lowers a match's confidence. */
+  contracts: [number, number];
+  putWidth: [number, number];
+  callWidth: [number, number];
+}
+export const LIVE_PROFILES: LiveProfile[] = [
+  { bot: "8SMA IC", kind: "iron_condor", dte: 0, times: ["13:30"], credit: [7, 11], contracts: [10, 30], putWidth: [20, 60], callWidth: [45, 105] },
+  { bot: "$8 IC", kind: "iron_condor", dte: 0, times: ["13:35"], credit: [12, 17.5], contracts: [5, 15], putWidth: [45, 60], callWidth: [45, 60] },
+  { bot: "5d IC", kind: "iron_condor", dte: 0, times: ["13:30", "14:30"], credit: [0.3, 3], contracts: [8, 20], putWidth: [95, 105], callWidth: [95, 105] },
+];
 
 /**
  * Day-type definitions, fixed before scoring starts. Computed after the close

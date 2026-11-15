@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { TRADER } from "@/config/trader";
 import type { Bar } from "@/lib/alpaca";
-import { dailyStopHit, dataProblems, decisionSlot, entryBlocked, parseReply, timeExitDue, validateAction, type DayState, type Reply } from "@/lib/trader/rules";
+import { dailyStopHit, dataProblems, decisionSlot, entryBlocked, parseReply, parseReplyChecked, timeExitDue, validateAction, type DayState, type Reply } from "@/lib/trader/rules";
 import { etToUtc } from "@/lib/time";
 
 const D = "2024-03-11"; // EDT
@@ -12,7 +12,11 @@ const reply = (r: Partial<Reply>): Reply => ({ action: "long", confidence: 70, s
 describe("reply parsing", () => {
   it("accepts strict JSON and enforces the 40-word thesis", () => {
     expect(parseReply(JSON.stringify(reply({}))).action).toBe("long");
-    expect(() => parseReply(JSON.stringify(reply({ thesis: Array(41).fill("w").join(" ") })))).toThrow(/41 words/);
+    // v2: an over-long thesis is trimmed to 40 words and flagged, not rejected.
+    const long = parseReplyChecked(JSON.stringify(reply({ thesis: Array(44).fill("w").join(" ") })));
+    expect(long.trimmed).toBe(true);
+    expect(long.reply.thesis.split(" ")).toHaveLength(40);
+    expect(parseReplyChecked(JSON.stringify(reply({}))).trimmed).toBe(false);
     expect(() => parseReply(JSON.stringify({ ...reply({}), action: "buy" }))).toThrow(/schema/);
     expect(() => parseReply("hold")).toThrow(/no JSON/);
   });
@@ -111,7 +115,9 @@ describe("data guards", () => {
     expect(dataProblems({ now, quote: { ...quote, ts: new Date(now.getTime() - 11000).toISOString() }, bars1m: bars("09:30", 30), sessionOpen: open })[0]).toMatch(/quote 11\.0s old/);
   });
   it("missing bar in the last 15 minutes", () => {
-    expect(dataProblems({ now, quote, bars1m: bars("09:30", 30, [27]), sessionOpen: open })[0]).toMatch(/missing 1-min bars at 09:57/);
+    // v2: one gap in the window is tolerated (IEX skips minutes with no trades); two are not.
+    expect(dataProblems({ now, quote, bars1m: bars("09:30", 30, [27]), sessionOpen: open })).toEqual([]);
+    expect(dataProblems({ now, quote, bars1m: bars("09:30", 30, [22, 27]), sessionOpen: open })[0]).toMatch(/missing 1-min bars at 09:52, 09:57/);
     expect(dataProblems({ now, quote, bars1m: bars("09:30", 29), sessionOpen: open })[0]).toMatch(/09:59/); // latest bar not in yet
   });
   it("timestamps ahead of the server clock by more than 5 s", () => {

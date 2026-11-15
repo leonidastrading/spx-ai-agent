@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { LLM, RULES } from "@/config/rules";
-import { OO_STRATEGY_MAP, STRATEGIES, type StrategyDef } from "@/config/strategies";
+import { LEGACY_STRATEGIES, OO_STRATEGY_MAP, STRATEGIES, type StrategyDef } from "@/config/strategies";
 import { DEFAULT_KEYWORDS, type KeywordConfig } from "./news";
 import { normalizeOoName } from "./optionomega";
 
@@ -84,6 +84,8 @@ export const settingsSchema = z
             label: z.string().trim().min(1).max(80),
             terms,
             megaCapOnly: z.boolean().optional(),
+            scope: z.enum(["market", "company"]).optional(),
+            exclude: terms.optional(),
           }),
         )
         .max(30),
@@ -125,16 +127,65 @@ export function validateSettings(input: unknown): { ok: true; settings: Settings
 export function mergeSettings(stored: unknown): Settings {
   if (!stored || typeof stored !== "object") return DEFAULT_SETTINGS;
   const s = stored as Partial<Settings>;
+  const { strategies, ooMap } = migrateLegacyBots(s.strategies ?? DEFAULT_SETTINGS.strategies, s.ooMap ?? DEFAULT_SETTINGS.ooMap);
   const candidate = {
     rules: { ...DEFAULT_SETTINGS.rules, ...(s.rules ?? {}) },
     llm: { ...DEFAULT_SETTINGS.llm, ...(s.llm ?? {}) },
     email: { ...DEFAULT_SETTINGS.email, ...(s.email ?? {}) },
-    strategies: s.strategies ?? DEFAULT_SETTINGS.strategies,
-    ooMap: s.ooMap ?? DEFAULT_SETTINGS.ooMap,
-    keywords: { ...DEFAULT_SETTINGS.keywords, ...(s.keywords ?? {}) },
+    strategies,
+    ooMap,
+    keywords: withDefaultExcludes({ ...DEFAULT_SETTINGS.keywords, ...(s.keywords ?? {}) }),
   };
   const v = validateSettings(candidate);
   return v.ok ? v.settings : DEFAULT_SETTINGS;
+}
+
+/** The default bots a user may already have under their own names (e.g. "2DTE<20", "3Δ 4DTE"). */
+export const EQUIVALENT: Record<string, RegExp> = {
+  "2DTE VIX<20": /2\s*dte.*<\s*20/i,
+  "2DTE VIX>20": /2\s*dte.*>\s*=?\s*20/i,
+  "VIX-up VIX<20": /vix[\s-]*up.*<\s*20/i,
+  "VIX-up VIX>20": /vix[\s-]*up.*>\s*=?\s*20/i,
+  "3 Delta": /3\s*(Δ|delta)/i,
+};
+
+/**
+ * Saved settings from before the VIX split list "2DTE" and "VIX-up". Drop those, and add the split bots and
+ * 3 Delta only where the user has no bot of their own for them (e.g. "2DTE<20" counts as "2DTE VIX<20").
+ * Also removes a default-named copy that an earlier migration added next to the user's own name. Every other
+ * edit is kept; Option Omega mappings that pointed at a removed name are dropped.
+ */
+export function migrateLegacyBots(strategies: StrategyDef[], ooMap: Record<string, string>) {
+  const own = (def: string) => strategies.some((x) => x.name !== def && EQUIVALENT[def]?.test(x.name));
+  const hasLegacy = strategies.some((x) => LEGACY_STRATEGIES.includes(x.name));
+  const dupes = strategies.filter((x) => x.name in EQUIVALENT && own(x.name));
+  if (!hasLegacy && !dupes.length) return { strategies, ooMap };
+  const kept = strategies.filter((x) => !LEGACY_STRATEGIES.includes(x.name) && !dupes.includes(x));
+  const add = hasLegacy
+    ? STRATEGIES.filter((x) => x.name in EQUIVALENT && !kept.some((k) => k.name === x.name || EQUIVALENT[x.name].test(k.name)))
+    : [];
+  const merged = [...kept, ...add];
+  const live = new Set(merged.map((x) => x.name));
+  return {
+    strategies: merged,
+    ooMap: Object.fromEntries(Object.entries(ooMap).filter(([, v]) => live.has(v))),
+  };
+}
+
+/** Saved keyword categories from before exclude lists existed get the defaults' exclude list (same key). */
+function withDefaultExcludes(k: KeywordConfig): KeywordConfig {
+  const byKey = new Map(DEFAULT_SETTINGS.keywords.categories.map((c) => [c.key, c]));
+  return { ...k, categories: k.categories.map((c) => (c.exclude || !byKey.get(c.key)?.exclude ? c : { ...c, exclude: byKey.get(c.key)!.exclude })) };
+}
+
+/**
+ * The user's own name for a default bot name ("2DTE VIX<20" may be "2DTE<20", "3 Delta" may be "3Δ 4DTE"), or
+ * null when the settings have no such bot.
+ */
+export function settingsBotName(defaultName: string, names: string[]): string | null {
+  if (names.includes(defaultName)) return defaultName;
+  const re = EQUIVALENT[defaultName];
+  return (re && names.find((n) => re.test(n))) ?? null;
 }
 
 export const strategyNames = (s: Settings) => s.strategies.map((x) => x.name);

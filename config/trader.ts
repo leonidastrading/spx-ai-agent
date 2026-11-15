@@ -28,8 +28,13 @@ export const TRADER = {
   /** Data guards. */
   maxQuoteAgeSeconds: 10,
   maxClockSkewSeconds: 5,
-  /** Minutes of 1-min bars that must be complete (no gaps) for a decision. */
+  /** Minutes of 1-min bars checked for gaps before a decision... */
   barCompletenessMinutes: 15,
+  /** ...of which this many may be missing (v2; the free IEX feed skips minutes with no trades). The latest closed
+   *  minute must always be there. */
+  maxMissingBars: 1,
+  /** Thesis word limit: longer theses are trimmed and flagged (v2), not rejected. */
+  maxThesisWords: 40,
   /** Alert when this many decision cycles pass without a heartbeat. */
   missedCyclesAlert: 3,
   /** Random-entry baseline: simulated trades per real trade. */

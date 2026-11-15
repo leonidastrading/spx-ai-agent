@@ -8,7 +8,7 @@
 
 import { SCHEDULE } from "@/config/rules";
 import type { Bar, Feed } from "./alpaca";
-import { DEFAULT_KEYWORDS, keywordCounts, type Headline, type KeywordConfig } from "./news";
+import { DEFAULT_KEYWORDS, keywordCounts, screenHeadlines, type Headline, type KeywordConfig } from "./news";
 import { etToUtc, type Session } from "./time";
 
 export interface FeatureInput {
@@ -56,6 +56,9 @@ export interface Features {
   vixy_ret_pct: number | null;
   news_since_prior_close: number;
   news_since_open: number;
+  /** Of news_since_prior_close: kept after screening, and dropped (press-release wires, non-US / single-stock halts). */
+  news_kept?: number;
+  news_dropped?: number;
   [kw: `kw_${string}`]: number;
 }
 
@@ -68,7 +71,7 @@ export const FEATURE_COLUMNS = [
   "new_highs", "new_lows",
   "qqq_ret_pct", "iwm_ret_pct", "qqq_minus_spy_pct", "iwm_minus_spy_pct",
   "tlt_ret_pct", "vixy_ret_pct",
-  "news_since_prior_close", "news_since_open",
+  "news_since_prior_close", "news_since_open", "news_kept", "news_dropped",
 ] as const;
 
 const round = (x: number | null, dp = 4): number | null => (x === null || !Number.isFinite(x) ? null : Number(x.toFixed(dp)));
@@ -190,6 +193,10 @@ export function computeFeatures(input: FeatureInput): Features {
     vixy_ret_pct: round(symbolReturn(bars, "VIXY", input)),
     news_since_prior_close: overnight.length,
     news_since_open: sinceOpen.length,
+    ...(() => {
+      const sc = screenHeadlines(overnight, input.keywords ?? DEFAULT_KEYWORDS);
+      return { news_kept: sc.kept.length, news_dropped: sc.total - sc.kept.length };
+    })(),
     ...keywordCounts(overnight, input.keywords ?? DEFAULT_KEYWORDS),
   };
 }

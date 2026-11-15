@@ -296,6 +296,8 @@ export interface NewsItem {
   symbols: string[];
   source: string;
   url: string;
+  /** Who wrote/distributed it (e.g. "Benzinga Newsdesk", "Business Wire"): press-release wires are screened out. */
+  author?: string;
 }
 
 export interface RawNewsResponse {
@@ -308,6 +310,7 @@ export interface RawNewsResponse {
     symbols?: string[];
     source?: string;
     url?: string;
+    author?: string;
   }> | null;
   next_page_token?: string | null;
 }
@@ -321,5 +324,6 @@ export function parseNewsResponse(resp: RawNewsResponse): NewsItem[] {
     symbols: n.symbols ?? [],
     source: n.source ?? "",
     url: n.url ?? "",
+    author: n.author ?? "",
   }));
 }

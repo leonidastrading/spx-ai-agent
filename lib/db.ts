@@ -82,12 +82,12 @@ export async function insertNews(items: NewsItem[]): Promise<number> {
   for (let i = 0; i < items.length; i += CHUNK) {
     const c = items.slice(i, i + CHUNK);
     const rows = await q(
-      `INSERT INTO news (id, ts, headline, summary, symbols, source, url)
-       SELECT id, ts, headline, summary, string_to_array(symbols, '|'), source, url
-       FROM unnest($1::bigint[], $2::timestamptz[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[])
-         AS t(id, ts, headline, summary, symbols, source, url)
+      `INSERT INTO news (id, ts, headline, summary, symbols, source, url, author)
+       SELECT id, ts, headline, summary, string_to_array(symbols, '|'), source, url, author
+       FROM unnest($1::bigint[], $2::timestamptz[], $3::text[], $4::text[], $5::text[], $6::text[], $7::text[], $8::text[])
+         AS t(id, ts, headline, summary, symbols, source, url, author)
        ON CONFLICT (id) DO NOTHING RETURNING 1`,
-      [c.map((x) => x.id), c.map((x) => x.ts), c.map((x) => x.headline), c.map((x) => x.summary), c.map((x) => x.symbols.join("|")), c.map((x) => x.source), c.map((x) => x.url)],
+      [c.map((x) => x.id), c.map((x) => x.ts), c.map((x) => x.headline), c.map((x) => x.summary), c.map((x) => x.symbols.join("|")), c.map((x) => x.source), c.map((x) => x.url), c.map((x) => x.author ?? "")],
     );
     n += rows.length;
   }
@@ -111,8 +111,8 @@ export async function loadBars(from: Date, to: Date): Promise<Bar[]> {
 }
 
 export async function loadNews(from: Date, to: Date): Promise<NewsItem[]> {
-  const rows = await q(`SELECT id, ts, headline, summary, symbols, source, url FROM news WHERE ts >= $1 AND ts < $2 ORDER BY ts`, [from.toISOString(), to.toISOString()]);
-  return rows.map((r) => ({ id: Number(r.id), ts: new Date(r.ts).toISOString(), headline: r.headline, summary: r.summary, symbols: r.symbols ?? [], source: r.source, url: r.url }));
+  const rows = await q(`SELECT id, ts, headline, summary, symbols, source, url, author FROM news WHERE ts >= $1 AND ts < $2 ORDER BY ts`, [from.toISOString(), to.toISOString()]);
+  return rows.map((r) => ({ id: Number(r.id), ts: new Date(r.ts).toISOString(), headline: r.headline, summary: r.summary, symbols: r.symbols ?? [], source: r.source, url: r.url, author: r.author ?? "" }));
 }
 
 export async function upsertFeatures(date: string, minuteEt: string, f: Features): Promise<void> {
@@ -135,6 +135,18 @@ export async function upsertMorningHistory(date: string, atr: number | null, ret
   );
 }
 
+/** Rows that count as ATR history before `date`, plus days already tried without data (so a full history is cheap to detect). */
+export async function atrHistoryCount(date: string): Promise<number> {
+  const rows = await q(`SELECT count(*) AS n FROM morning_history WHERE date < $1`, [date]);
+  return Number(rows[0]?.n ?? 0);
+}
+
+/** Dates with a morning_history row (any source, ATR or not) on or after `from`. */
+export async function morningHistoryDates(from: string): Promise<Set<string>> {
+  const rows = await q(`SELECT to_char(date, 'YYYY-MM-DD') AS d FROM morning_history WHERE date >= $1`, [from]);
+  return new Set(rows.map((r) => r.d as string));
+}
+
 /** Up to `limit` prior days' atr30_bp, oldest first, strictly before `date`. */
 export async function atrHistory(date: string, limit: number): Promise<number[]> {
   const rows = await q(
@@ -149,23 +161,23 @@ export async function hasDecision(date: string, source: "rule" | "llm"): Promise
   return rows.length > 0;
 }
 
-export async function insertDecisions(date: string, source: "rule" | "llm", calls: Array<Omit<StrategyCall, "call"> & { call: string }>): Promise<number> {
+export async function insertDecisions(date: string, source: "rule" | "llm", calls: Array<Omit<StrategyCall, "call"> & { call: string }>, versionId: number | null = null): Promise<number> {
   if (!calls.length) return 0;
   const rows = await q(
-    `INSERT INTO decisions (date, strategy, source, call, confidence, reason)
-     SELECT $1::date, s, $2, c, conf, r FROM unnest($3::text[], $4::text[], $5::float8[], $6::text[]) AS t(s, c, conf, r)
+    `INSERT INTO decisions (date, strategy, source, call, confidence, reason, version_id)
+     SELECT $1::date, s, $2, c, conf, r, $7 FROM unnest($3::text[], $4::text[], $5::float8[], $6::text[]) AS t(s, c, conf, r)
      ON CONFLICT (date, strategy, source) DO NOTHING RETURNING 1`,
-    [date, source, calls.map((c) => c.strategy), calls.map((c) => c.call), calls.map((c) => c.confidence), calls.map((c) => c.reason)],
+    [date, source, calls.map((c) => c.strategy), calls.map((c) => c.call), calls.map((c) => c.confidence), calls.map((c) => c.reason), versionId],
   );
   return rows.length;
 }
 
-export async function decisionsForDate(date: string): Promise<Array<{ strategy: string; source: string; call: string; confidence: number | null; reason: string }>> {
-  return (await q(`SELECT strategy, source, call, confidence, reason FROM decisions WHERE date = $1 ORDER BY source, strategy`, [date])) as any;
+export async function decisionsForDate(date: string): Promise<Array<{ strategy: string; source: string; call: string; confidence: number | null; reason: string; version_id: number | null }>> {
+  return (await q(`SELECT strategy, source, call, confidence, reason, version_id FROM decisions WHERE date = $1 ORDER BY source, strategy`, [date])) as any;
 }
 
-export async function allDecisions(): Promise<Array<{ date: string; strategy: string; source: string; call: string; confidence: number | null; reason: string }>> {
-  const rows = await q(`SELECT to_char(date, 'YYYY-MM-DD') AS date, strategy, source, call, confidence, reason FROM decisions ORDER BY date DESC, source, strategy`);
+export async function allDecisions(): Promise<Array<{ date: string; strategy: string; source: string; call: string; confidence: number | null; reason: string; version_id: number | null }>> {
+  const rows = await q(`SELECT to_char(date, 'YYYY-MM-DD') AS date, strategy, source, call, confidence, reason, version_id FROM decisions ORDER BY date DESC, source, strategy`);
   return rows as any;
 }
 

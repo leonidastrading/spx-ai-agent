@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { STRATEGY_NAMES } from "@/config/strategies";
 import { categorize, type KeywordConfig } from "@/lib/news";
 import { parseTradeLog } from "@/lib/optionomega";
-import { DEFAULT_SETTINGS, effectiveModel, envStatus, mergeSettings, validateSettings } from "@/lib/settings";
+import { DEFAULT_SETTINGS, effectiveModel, envStatus, mergeSettings, migrateLegacyBots, validateSettings } from "@/lib/settings";
 
 const clone = () => structuredClone(DEFAULT_SETTINGS);
 
@@ -78,3 +78,34 @@ describe("settings take effect", () => {
     expect(r.unmapped).toEqual({ "Put BWB 13:50": 1 });
   });
 });
+
+describe("legacy bot migration", () => {
+  it("swaps 2DTE / VIX-up for the four split bots and drops their OO mappings", () => {
+    const r = migrateLegacyBots(
+      [{ name: "Long", entryEt: "", description: "" }, { name: "2DTE", entryEt: "", description: "" }, { name: "VIX-up", entryEt: "", description: "" }],
+      { "long (sell puts)": "Long", "2dte put spread": "2DTE" },
+    );
+    const names = r.strategies.map((x) => x.name);
+    expect(names).not.toContain("2DTE");
+    expect(names).toEqual(expect.arrayContaining(["2DTE VIX<20", "2DTE VIX>20", "VIX-up VIX<20", "VIX-up VIX>20", "3 Delta"]));
+    expect(r.ooMap).toEqual({ "long (sell puts)": "Long" });
+  });
+});
+
+describe("legacy bot migration with the user's own split names", () => {
+  const def = (name: string) => ({ name, entryEt: "", description: "" });
+  const own = ["Long", "2DTE", "VIX-up", "2DTE<20", "VIX-up<20", "2DTE>20", "VIX-up>20", "3Δ 4DTE"].map(def);
+  it("drops 2DTE / VIX-up and adds nothing the user already has under another name", () => {
+    const r = migrateLegacyBots(own, { "2dte put spread": "2DTE", "long (sell puts)": "Long" });
+    expect(r.strategies.map((x) => x.name)).toEqual(["Long", "2DTE<20", "VIX-up<20", "2DTE>20", "VIX-up>20", "3Δ 4DTE"]);
+    expect(r.ooMap).toEqual({ "long (sell puts)": "Long" });
+  });
+  it("removes default-named copies an earlier migration added next to the user's names", () => {
+    const after = [...own.filter((x) => !["2DTE", "VIX-up"].includes(x.name)), ...["2DTE VIX<20", "2DTE VIX>20", "VIX-up VIX<20", "VIX-up VIX>20", "3 Delta"].map(def)];
+    expect(migrateLegacyBots(after, {}).strategies.map((x) => x.name)).toEqual(["Long", "2DTE<20", "VIX-up<20", "2DTE>20", "VIX-up>20", "3Δ 4DTE"]);
+  });
+  it("the defaults alone are left as they are", () => {
+    expect(mergeSettings({}).strategies).toHaveLength(13);
+  });
+});
+

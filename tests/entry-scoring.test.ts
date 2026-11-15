@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { actualDayType, asAdvised, asRun, bucketBy, entryGate, humanWeight, morningWeight, randomSkipBaseline, savedVsMissed, simpleRule, type ScoredCall } from "@/lib/entry/scoring";
+import { actualDayType, asAdvised, asRun, bucketBy, entryGate, humanWeight, morningWeight, randomSkipBaseline, reasonSplit, savedVsMissed, simpleRule, type ScoredCall } from "@/lib/entry/scoring";
 import { etToUtc } from "@/lib/time";
 
 const c = (date: string, bot: string, verdict: ScoredCall["verdict"], pl: number, vix = 0, hhmm = "13:30"): ScoredCall => ({
@@ -69,5 +69,16 @@ describe("day types (fixed definitions)", () => {
     expect(actualDayType(D, day((i) => (i < 150 ? 500 - i * 0.02 : 497 + (i - 150) * 0.015)), 15, 15)).toBe("reversal"); // −0.6% by noon, closes up
     expect(actualDayType(D, day((i) => 500 + Math.sin(i / 10) * 4), 17, 15)).toBe("vol_expansion"); // VIX +13%, range 1.6%
     expect(actualDayType(D, day((i) => 500).slice(0, 100), 15, 15)).toBeNull(); // incomplete
+  });
+});
+
+describe("reduce/skip split by leading reason", () => {
+  it("files each cut under its first reason and counts saved and missed", () => {
+    const c = (verdict: "take" | "reduce" | "skip", driver: string, pl: number) => ({ entryId: `${verdict}${driver}${pl}`, date: "2026-11-11", bot: "Long", filledAt: "2026-11-11T15:00:00Z", verdict, confidence: 60, dayType: "range", categories: [driver], driver, vixChangePct: null, pl });
+    const rows = reasonSplit([c("skip", "bot_record", -400), c("reduce", "bot_record", 200), c("skip", "vol", 300), c("reduce", "news", -100), c("take", "price", 500), c("skip", "calendar", -50)]);
+    const by = Object.fromEntries(rows.map((r) => [r.key, r]));
+    expect(by.bot_record).toMatchObject({ n: 2, skip: 1, reduce: 1, avgPl: -100, saved: 400, missed: 100, net: 300 });
+    expect(by.market).toMatchObject({ n: 2, saved: 50, missed: 300, net: -250 });
+    expect(by.other).toMatchObject({ n: 1, saved: 50 });
   });
 });

@@ -1,3 +1,4 @@
+import { ENTRY } from "@/config/entry";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_KEYWORDS } from "@/lib/news";
 import { buildPacket, expirationsOn, packetHash, type PacketInput } from "@/lib/entry/packet";
@@ -83,13 +84,22 @@ describe("packet: nothing after the entry", () => {
 });
 
 describe("reply rules", () => {
-  const ok = { verdict: "skip", confidence: 70, day_type: "trend_down", reasons: [{ category: "price", text: "Broke the opening range low on volume." }], main_risk: "Afternoon squeeze.", would_change_mind: "Reclaim of VWAP.", data_ok: true };
-  it("accepts a valid reply", () => expect(parseEntryReply(JSON.stringify(ok)).verdict).toBe("skip"));
-  it("1–3 reasons, ≤25 words each, enums enforced", () => {
+  const ok = { verdict: "skip", confidence: 70, day_type: "trend_down", reasons: [{ category: "price", text: "Broke the opening range low on volume." }], primary_category: "price", main_risk: "Afternoon squeeze.", would_change_mind: "Reclaim of VWAP.", data_ok: true };
+  it("accepts a valid reply", () => expect(parseEntryReply(JSON.stringify(ok)).reply.verdict).toBe("skip"));
+  it("at least one reason, enums enforced", () => {
     expect(() => parseEntryReply(JSON.stringify({ ...ok, reasons: [] }))).toThrow();
-    expect(() => parseEntryReply(JSON.stringify({ ...ok, reasons: Array(4).fill(ok.reasons[0]) }))).toThrow();
-    expect(() => parseEntryReply(JSON.stringify({ ...ok, main_risk: Array(26).fill("w").join(" ") }))).toThrow(/25 words/);
     expect(() => parseEntryReply(JSON.stringify({ ...ok, verdict: "half" }))).toThrow();
+  });
+
+  it("trims over-long text to the word limit and keeps the call (flagged), never drops it for length", () => {
+    const long = Array(60).fill("w").join(" ");
+    const r = parseEntryReply(JSON.stringify({ ...ok, main_risk: long, reasons: Array(4).fill({ ...ok.reasons[0], text: long }) }));
+    expect(r.reply.verdict).toBe("skip");
+    expect(r.reply.main_risk.split(" ")).toHaveLength(ENTRY.maxReasonWords);
+    expect(r.reply.main_risk.endsWith("…")).toBe(true);
+    expect(r.reply.reasons).toHaveLength(3);
+    expect(r.trimmed).toEqual(expect.arrayContaining(["main_risk", "reasons[0]", "reasons (4 → 3)"]));
+    expect(parseEntryReply(JSON.stringify(ok)).trimmed).toEqual([]);
   });
   it("model and effort are part of the version", () => {
     expect(entryVersionHash("claude-opus-5-5", "low")).not.toBe(entryVersionHash("claude-opus-5-5", "medium"));

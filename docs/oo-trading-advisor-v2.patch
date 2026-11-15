@@ -1,0 +1,374 @@
+From 0062de26ea3cc4e1fb4e6ce04d153c1042e7022c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 11 Nov 2026 21:54:01 +0000
+Subject: [PATCH] Advisor export v2: Live-tab attribution, net liquidation
+ value, open entries
+
+- Entries the structure rules don't fit (e.g. Nov 11's 13:30 / 13:35 ICs, puts 55 / calls 50)
+  fall back to the Live tab's backtest profiles (profileMatch: leg signature, nearest usual entry
+  time, usual credit range), with a confidence and matchSource "live_profile".
+- account: Schwab net liquidation value now and at each stored end of day, so the advisor can
+  measure drawdown from the NLV high instead of 15 days of book P/L.
+- book.open: entries still open with legs, size and open P/L.
+All new fields are optional in the contract; read-only, no account identifiers.
+---
+ src/lib/export/advisor.ts  | 62 +++++++++++++++++++++++++++++++++++---
+ src/lib/export/load.ts     | 17 +++++++++--
+ src/lib/scorecard.ts       | 37 ++++++++++++++++++-----
+ test/advisorContract.ts    |  9 ++++++
+ test/exportAdvisor.test.ts | 31 +++++++++++++++++++
+ 5 files changed, 143 insertions(+), 13 deletions(-)
+
+diff --git a/src/lib/export/advisor.ts b/src/lib/export/advisor.ts
+index e190fa0..46567f2 100644
+--- a/src/lib/export/advisor.ts
++++ b/src/lib/export/advisor.ts
+@@ -10,7 +10,7 @@ import { uniqueEntries } from "../allocSim";
+ import { intrinsic } from "../options";
+ import type { OOTrade } from "../ooCsv";
+ import type { Fill } from "../realized";
+-import { buildLiveTrades, canonicalStrategy, mergeSplitOrders, OO_TIME_EXITS, STRATEGIES, type LiveTrade, type Scorecard } from "../scorecard";
++import { buildLiveTrades, canonicalStrategy, mergeSplitOrders, OO_TIME_EXITS, profileMatch, STRATEGIES, type LiveTrade, type Profile, type Scorecard } from "../scorecard";
+ import type { Bar, Quote } from "../schwab/data";
+ import { classifySpread, type Position } from "../spreads";
+ import { bookEntryCandidates, inWindow, tradingDte, type RuleLeg } from "../strategyRules";
+@@ -36,6 +36,8 @@ export interface ExportEntry {
+   match: MatchKind;
+   matchConfidence: number;
+   matchReason: string;
++  /** How the bot was found: the structure rules, or (when they don't fit) the Live tab's backtest profiles. */
++  matchSource: "rules" | "live_profile" | null;
+   structure: string;
+   underlying: string;
+   legs: ExportLeg[];
+@@ -90,7 +92,11 @@ export interface AdvisorExport {
+     daily: { date: string; pl: number }[];
+     /** ≤ 0: today's running total against the high of the cumulative daily series (0 = at the high). */
+     drawdownFromHigh: number;
++    /** Entries still open now: legs, size and open P/L (marks), for the morning advisor. */
++    open: { entryId: string; bot: string | null; filledAt: string; legs: ExportLeg[]; contracts: number; pl: number }[];
+   };
++  /** Schwab net liquidation value now and at each stored end of day (no account identifiers). Null when unknown. */
++  account: { netLiq: number | null; startNetLiq: number | null; asOf: string; eod: { date: string; netLiq: number }[] } | null;
+   bots: Record<string, BotRecord & { last10Days: { date: string; trades: { time: string; pl: number }[] }[] }>;
+   market: {
+     spx: ExportQuote;
+@@ -129,6 +135,10 @@ export interface AdvisorInput {
+   bots: Record<string, BotRecord>;
+   /** Export id → when oo-trading first saw the entry (ms). */
+   seenAt: Record<string, number>;
++  /** Backtest profiles per strategy (the Live tab's attribution), for entries the structure rules don't fit. */
++  profiles?: Map<string, Profile>;
++  /** Schwab balances (net liquidation value now and at the start of the day). */
++  balances?: { netLiq: number | null; startNetLiq: number | null } | null;
+ }
+ 
+ /** Thrown when a required block (the SPX or VIX quote) can't be produced; the route answers 503. */
+@@ -229,6 +239,28 @@ export function matchBot(legs: RuleLeg[], entryDate: string, minutes: number, ca
+   };
+ }
+ 
++/**
++ * A Live-tab profile match as a BotMatch. Confidence starts at 0.9 and drops for an entry time away from the
++ * strategy's usual ones, a credit outside its usual range, and a close runner-up; the advisor gives no opinion
++ * below its threshold (0.6).
++ */
++export function profileBotMatch(pm: NonNullable<ReturnType<typeof profileMatch>>, rules: BotMatch): BotMatch {
++  let c = 0.9;
++  if (pm.minutesOff > 5) c -= 0.15;
++  if (pm.minutesOff > 15) c -= 0.15;
++  if (pm.creditOutside > 0) c -= Math.min(0.4, 0.4 * pm.creditOutside);
++  if (pm.margin !== null && pm.margin < 2) c -= 0.2;
++  const conf = r2(Math.max(0, c));
++  const desc = rules.matchReason.replace(/:[^:]*$/, "");
++  return {
++    bot: pm.strategy,
++    candidates: rules.candidates,
++    match: "exact",
++    matchConfidence: conf,
++    matchReason: `${desc}: ${pm.strategy} by its live profile (Live tab): ${pm.minutesOff.toFixed(0)} min from its usual entry time, credit ${pm.creditOutside ? `${pm.creditOutside} range-widths outside` : "inside"} its usual ${pm.creditLo}–${pm.creditHi}${pm.margin !== null ? `, runner-up ${pm.margin} behind` : ""}`,
++  };
++}
++
+ // ---------- Per-bot records (stored OO trades + scorecard) ----------
+ 
+ function bucketStats(trades: OOTrade[]): BotBucket {
+@@ -300,6 +332,7 @@ interface TradeView {
+   underlying: string;
+   legs: ExportLeg[];
+   match: BotMatch;
++  matchSource: "rules" | "live_profile" | null;
+   /** P/L so far ($, net of Schwab fees): closed legs at their exit, open legs at the mark or settlement. */
+   pl: number;
+   status: "open" | "closed" | "stopped" | "expired";
+@@ -398,13 +431,21 @@ function buildTradeViews(input: AdvisorInput): TradeView[] {
+     } else status = "open";
+ 
+     const minutes = etParts(filledAt).minutesOfDay;
+-    const match = matchBot(legs, trade.date, minutes);
++    let match = matchBot(legs, trade.date, minutes);
++    let matchSource: TradeView["matchSource"] = match.bot ? "rules" : null;
++    if (match.match !== "exact" && input.profiles) {
++      const pm = profileMatch(trade, input.profiles);
++      if (pm) {
++        match = { ...profileBotMatch(pm, match), candidates: match.candidates.length ? match.candidates : [pm.strategy] };
++        matchSource = "live_profile";
++      }
++    }
+     if (match.bot === "$8 IC" && trade.units === 1) match.matchReason += " (1 lot: possibly the Dip add-on)";
+     if (how === "closed" && match.bot && OO_TIME_EXITS[match.bot] !== undefined && lastOrderExit !== null) {
+       const m = etParts(lastOrderExit).minutesOfDay;
+       if (Math.abs(m - OO_TIME_EXITS[match.bot]) <= 3) how = "time";
+     }
+-    views.push({ trade, id: entryId(trade.orderId), filledAt, underlying, legs, match, pl, status, closedAt, how });
++    views.push({ trade, id: entryId(trade.orderId), filledAt, underlying, legs, match, matchSource, pl, status, closedAt, how });
+   }
+   return views.sort((a, b) => a.filledAt - b.filledAt);
+ }
+@@ -452,6 +493,7 @@ export function buildAdvisorExport(input: AdvisorInput): AdvisorExport {
+       match: v.match.match,
+       matchConfidence: v.match.matchConfidence,
+       matchReason: v.match.matchReason,
++      matchSource: v.matchSource,
+       structure: structureName(v.legs),
+       underlying: v.underlying,
+       legs: v.legs,
+@@ -483,6 +525,17 @@ export function buildAdvisorExport(input: AdvisorInput): AdvisorExport {
+   cum += todayTotal;
+   high = Math.max(high, cum);
+   const drawdownFromHigh = r2(cum - high);
++  const openNow = views
++    .filter((v) => v.status === "open")
++    .map((v) => ({ entryId: v.id, bot: v.match.bot, filledAt: iso(v.filledAt), legs: v.legs, contracts: v.trade.units, pl: v.pl }));
++  const account = input.balances
++    ? {
++        netLiq: input.balances.netLiq,
++        startNetLiq: input.balances.startNetLiq,
++        asOf: iso(now),
++        eod: input.eod.filter((s) => s.netLiq !== null).map((s) => ({ date: s.date, netLiq: s.netLiq! })).sort((a, b) => a.date.localeCompare(b.date)),
++      }
++    : null;
+ 
+   const days10 = lastTradingDays(today, 10);
+   const bots: AdvisorExport["bots"] = {};
+@@ -505,7 +558,8 @@ export function buildAdvisorExport(input: AdvisorInput): AdvisorExport {
+     schwab: { connected: input.connected, fillsFetchedAt: input.fillsFetchedAt === null ? null : iso(input.fillsFetchedAt), errors: input.errors },
+     entries,
+     outcomes,
+-    book: { today: bookToday, todayTotal, stoppedOutBots, daily, drawdownFromHigh },
++    book: { today: bookToday, todayTotal, stoppedOutBots, daily, drawdownFromHigh, open: openNow },
++    account,
+     bots,
+     market: {
+       spx,
+diff --git a/src/lib/export/load.ts b/src/lib/export/load.ts
+index ab8bf21..19972b3 100644
+--- a/src/lib/export/load.ts
++++ b/src/lib/export/load.ts
+@@ -8,7 +8,7 @@ import { gaugeRows } from "../gaugeCapture";
+ import { KEYS, kv } from "../kv";
+ import { uniqueEntries } from "../allocSim";
+ import type { OOTrade } from "../ooCsv";
+-import { buildScorecard } from "../scorecard";
++import { buildProfiles, buildScorecard, deserializeProfiles, serializeProfiles, toBacktest, type BacktestTrade, type SerializedProfiles } from "../scorecard";
+ import { cachedAccount, cachedDailyBars, cachedFillsSince, cachedFiveMinuteBars, cachedMinuteBars, cachedQuotes } from "../schwab/data";
+ import { tokenStatus } from "../schwab/tokens";
+ import { addDays, closedMaxAge, marketSession, todayET } from "../time";
+@@ -36,6 +36,15 @@ async function botRecords(now: number): Promise<{ data: Record<string, BotRecord
+   return { data: res.data ?? {}, error: res.error };
+ }
+ 
++/** The Live tab's backtest profiles (entry times, leg signature, credit range per strategy), rebuilt every 6 hours. */
++async function liveProfiles(): Promise<{ data: SerializedProfiles; error: string | null }> {
++  const res = await cached<SerializedProfiles>("export:profiles:v1", 6 * 3600_000, async () => {
++    const oo = uniqueEntries(Object.values(await kv().hgetall<OOTrade>(KEYS.ooTrades)));
++    return serializeProfiles(buildProfiles(oo.map(toBacktest).filter((b): b is BacktestTrade => b !== null)));
++  });
++  return { data: res.data ?? [], error: res.error };
++}
++
+ /** Append the latest quotes to the ring buffer (keyed by Schwab's quote time) and return the recent snapshots. */
+ async function recordSnapshot(quotes: AdvisorInput["quotes"], now: number): Promise<QuoteSnapshot[]> {
+   const store = kv();
+@@ -105,7 +114,7 @@ export async function loadAdvisorExport(since: number, now = Date.now()): Promis
+     });
+   }
+ 
+-  const [fills, acct, quotes, spx1m, spx5m, spxDaily, vixDaily, vix9dDaily, gauge, eod, bots] = await Promise.all([
++  const [fills, acct, quotes, spx1m, spx5m, spxDaily, vixDaily, vix9dDaily, gauge, eod, bots, profiles] = await Promise.all([
+     cachedFillsSince(fillsFrom, age(15_000, now, live)),
+     cachedAccount(age(15_000, now, live)),
+     cachedQuotes(["$SPX", "$VIX", "$VIX9D"], age(10_000, now, live)),
+@@ -123,10 +132,12 @@ export async function loadAdvisorExport(since: number, now = Date.now()): Promis
+       return [];
+     }),
+     botRecords(now),
++    liveProfiles(),
+   ]);
+   fills.errors.forEach(push);
+   for (const r of [acct, quotes, spx1m, spx5m, spxDaily, vixDaily, vix9dDaily]) push(r.error);
+   push(bots.error);
++  push(profiles.error);
+ 
+   // The current week's window is the one that reaches today.
+   const liveWindow = fills.windows.find((w) => w.from <= today && today < w.to) ?? fills.windows.at(-1);
+@@ -147,6 +158,8 @@ export async function loadAdvisorExport(since: number, now = Date.now()): Promis
+     gauge,
+     eod,
+     bots: bots.data,
++    profiles: deserializeProfiles(profiles.data),
++    balances: acct.data?.balances ? { netLiq: acct.data.balances.netLiq, startNetLiq: acct.data.balances.startNetLiq } : null,
+   };
+   const first = buildAdvisorExport(input);
+   if (!first.entries.length) return first;
+diff --git a/src/lib/scorecard.ts b/src/lib/scorecard.ts
+index d6c8b3c..dbc2f9f 100644
+--- a/src/lib/scorecard.ts
++++ b/src/lib/scorecard.ts
+@@ -336,7 +336,7 @@ export function toBacktest(t: OOTrade): BacktestTrade | null {
+   };
+ }
+ 
+-interface Profile {
++export interface Profile {
+   signatures: Set<string>;
+   /** Distinct entry times seen in the backtest (minutes of day). */
+   times: number[];
+@@ -404,21 +404,44 @@ export const MAX_INFER_MINUTES = 30;
+  * time (≤ 30 min), and a credit inside its usual range.
+  */
+ export function inferStrategy(l: LiveTrade, profiles: Map<string, Profile>): string | null {
+-  const t = minutesET(l.time);
+   // The book's own rules (structure, wing widths, DTE) first; the backtest profiles only as a fallback.
+-  const ruled = classifyBookEntry(l.legs, l.date, t);
++  const ruled = classifyBookEntry(l.legs, l.date, minutesET(l.time));
+   if (ruled) return ruled;
+-  let best: { s: string; score: number } | null = null;
++  return profileMatch(l, profiles)?.strategy ?? null;
++}
++
++export interface ProfileMatch {
++  strategy: string;
++  /** Minutes from the strategy's nearest typical entry time. */
++  minutesOff: number;
++  /** How far the credit sits outside the strategy's 5–95% credit range, in range widths (0 = inside). */
++  creditOutside: number;
++  creditLo: number;
++  creditHi: number;
++  /** The runner-up's score minus the winner's (lower score is better); null when only one fits. */
++  margin: number | null;
++}
++
++/**
++ * The backtest-profile half of `inferStrategy`: same leg signature and DTE as a strategy's backtests, nearest
++ * typical entry time (≤ 30 min), credit inside its usual range. This is what labels live entries on the Live tab
++ * when the structure rules don't fit (e.g. an IC whose wings filled at other widths than its rule says).
++ */
++export function profileMatch(l: Pick<LiveTrade, "time" | "signature" | "credit">, profiles: Map<string, Profile>): ProfileMatch | null {
++  const t = minutesET(l.time);
++  const fits: (ProfileMatch & { score: number })[] = [];
+   for (const [s, p] of profiles) {
+     if (!p.signatures.has(l.signature)) continue;
+     const dt = Math.min(...p.times.map((x) => Math.abs(t - x)));
+     if (dt > MAX_INFER_MINUTES) continue;
+     const width = Math.max(p.creditHi - p.creditLo, 0.1);
+     const outside = l.credit < p.creditLo ? (p.creditLo - l.credit) / width : l.credit > p.creditHi ? (l.credit - p.creditHi) / width : 0;
+-    const score = dt + 10 * outside;
+-    if (!best || score < best.score) best = { s, score };
++    fits.push({ strategy: s, minutesOff: dt, creditOutside: Math.round(outside * 100) / 100, creditLo: p.creditLo, creditHi: p.creditHi, margin: null, score: dt + 10 * outside });
+   }
+-  return best?.s ?? null;
++  fits.sort((a, b) => a.score - b.score);
++  if (!fits.length) return null;
++  const { score, ...best } = fits[0];
++  return { ...best, margin: fits[1] ? Math.round((fits[1].score - score) * 100) / 100 : null };
+ }
+ 
+ /** User annotation on a live entry (keyed by Schwab opening orderId). */
+diff --git a/test/advisorContract.ts b/test/advisorContract.ts
+index e7ca4ff..7379b1a 100644
+--- a/test/advisorContract.ts
++++ b/test/advisorContract.ts
+@@ -30,6 +30,8 @@ export const exportSchema = z.object({
+       /** 0–1: how sure the leg/width/expiry/time rules are about the bot. */
+       matchConfidence: z.number().min(0).max(1),
+       matchReason: z.string(),
++      /** v2 (optional): "rules" = structure rules, "live_profile" = the Live tab's backtest profiles. */
++      matchSource: z.enum(["rules", "live_profile"]).nullable().optional(),
+       structure: z.string(),
+       underlying: z.string(),
+       legs: z.array(leg).min(1),
+@@ -48,7 +50,14 @@ export const exportSchema = z.object({
+     stoppedOutBots: z.array(z.string()),
+     daily: z.array(z.object({ date: z.string(), pl: z.number() })),
+     drawdownFromHigh: z.number(),
++    /** v2 (optional): entries still open, with legs, size and open P/L. */
++    open: z.array(z.object({ entryId: z.string(), bot: z.string().nullable(), filledAt: iso, legs: z.array(leg), contracts: z.number(), pl: z.number() })).optional(),
+   }),
++  /** v2 (optional): Schwab net liquidation value now and at each stored end of day. */
++  account: z
++    .object({ netLiq: z.number().nullable(), startNetLiq: z.number().nullable(), asOf: iso, eod: z.array(z.object({ date: z.string(), netLiq: z.number() })) })
++    .nullable()
++    .optional(),
+   bots: z.record(
+     z.string(),
+     z.object({
+diff --git a/test/exportAdvisor.test.ts b/test/exportAdvisor.test.ts
+index 363cb17..e207f5a 100644
+--- a/test/exportAdvisor.test.ts
++++ b/test/exportAdvisor.test.ts
+@@ -9,6 +9,7 @@ import { normalizeTransactions, type SchwabTransaction } from "@/lib/realized";
+ import type { Bar } from "@/lib/schwab/data";
+ import type { Position } from "@/lib/spreads";
+ import { classifySpread } from "@/lib/spreads";
++import { profileMatch } from "@/lib/scorecard";
+ import { bookEntryCandidates } from "@/lib/strategyRules";
+ import { addDays, etMidnightUtc, isTradingDay } from "@/lib/time";
+ import {
+@@ -19,6 +20,7 @@ import {
+   ExportUnavailable,
+   matchBot,
+   parseSince,
++  profileBotMatch,
+   VIX_BUCKETS,
+   type AdvisorInput,
+ } from "@/lib/export/advisor";
+@@ -277,6 +279,35 @@ describe("GET /api/export/advisor: response", () => {
+     expect(bookEntryCandidates(ic, d)).toEqual(["$8 IC"]);
+   });
+ 
++  it("labels ICs the rules miss with the Live tab's backtest profiles (Nov 11: puts 55 / calls 50 at 13:30 and 13:35)", () => {
++    const profiles = new Map([
++      ["8SMA IC", { signatures: new Set(["P+1@0,P-1@0,C-1@0,C+1@0"]), times: [810], creditLo: 7.5, creditHi: 10.5 }],
++      ["$8 IC", { signatures: new Set(["P+1@0,P-1@0,C-1@0,C+1@0"]), times: [815], creditLo: 12, creditHi: 16.5 }],
++    ]);
++    const live = (min: number, credit: number) => ({ time: etMidnightUtc(TODAY).getTime() + min * 60_000 + 3000, signature: "P+1@0,P-1@0,C-1@0,C+1@0", credit });
++    const rules = matchBot([], TODAY, 810);
++    const sma = profileMatch(live(810, 8.05), profiles)!;
++    const ic8 = profileMatch(live(815, 14.7), profiles)!;
++    expect(sma.strategy).toBe("8SMA IC");
++    expect(ic8.strategy).toBe("$8 IC");
++    const m1 = profileBotMatch(sma, rules);
++    expect(m1).toMatchObject({ bot: "8SMA IC", match: "exact" });
++    expect(m1.matchConfidence).toBeGreaterThanOrEqual(0.6);
++    expect(m1.matchReason).toMatch(/live profile/);
++    // A credit far outside every range at an odd time: low confidence (the advisor then gives no opinion).
++    const odd = profileMatch(live(835, 30), profiles)!;
++    expect(profileBotMatch(odd, rules).matchConfidence).toBeLessThan(0.6);
++  });
++
++  it("passes net liquidation value (now and each end of day) and today's open entries, no account ids", () => {
++    expect(buildAdvisorExport(input).account).toBeNull();
++    const x = buildAdvisorExport({ ...input, balances: { netLiq: 380_000, startNetLiq: 381_000 } });
++    expect(x.account).toMatchObject({ netLiq: 380_000, startNetLiq: 381_000 });
++    expect(x.account!.eod).toHaveLength(3);
++    expect(exportSchema.safeParse(x).success).toBe(true);
++    for (const o of x.book.open) expect(x.entries.some((e) => e.id === o.entryId) || o.entryId.length > 5).toBe(true);
++  });
++
+   it("scores outcomes and today's book from the fills", () => {
+     const exp = buildAdvisorExport(input);
+     const stoppedId = entryId(String(stopped.orderId));
+-- 
+2.43.0
+

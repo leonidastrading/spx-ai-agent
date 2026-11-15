@@ -40,11 +40,11 @@ export default async function TraderScoring({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <h1>AI trader scoring · v{version.id}</h1>
+      <h1>AI trader scoring · v{version.number}</h1>
       <form className="inline" method="get" style={{ marginBottom: 12 }}>
         <label className="small secondary">Version{" "}
           <select name="v" defaultValue={String(version.id)}>
-            {versions.map((v) => <option key={v.id} value={v.id}>v{v.id} · {v.model} · {v.effort} · from {toEt(new Date(v.createdAt)).date}</option>)}
+            {versions.map((v) => <option key={v.id} value={v.id}>v{v.number} · {v.model} · {v.effort} · from {toEt(new Date(v.createdAt)).date}</option>)}
           </select>
         </label>
         <button type="submit">Show</button>

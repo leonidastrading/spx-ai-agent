@@ -327,8 +327,9 @@ after about two months: would following the per-trade calls have beaten running 
 
 1. In oo-trading, add the export endpoint per `docs/oo-trading-export.md`, set `OO_EXPORT_TOKEN` there, and
    deploy.
-2. Here, set `OO_EXPORT_URL` (the oo-trading domain) and `OO_EXPORT_TOKEN` (the same token) in Vercel, then
-   redeploy.
+2. Here, set `OO_EXPORT_URL` (the oo-trading domain) and `OO_EXPORT_TOKEN` (the same token) in Vercel. If
+   oo-trading's deployment has Vercel Authentication on, also set `OO_EXPORT_BYPASS` to a "Protection Bypass for
+   Automation" secret from that project; it is sent as `x-vercel-protection-bypass`. Then redeploy.
 3. Add a third cron-job.org job:
    - URL: `https://<this domain>/api/cron/entries`
    - Schedule: every minute, hours 9–16, Monday–Friday, America/New_York.

@@ -1,0 +1,1214 @@
+[
+ {
+  "id": "fixture0000000000000000",
+  "filledAt": "2026-11-04T18:30:03.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 13:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7550,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "C",
+    "strike": 7745,
+    "qty": -1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "C",
+    "strike": 7845,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7650,
+    "qty": -1,
+    "expiration": "2026-11-04"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 0.9,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0001000000000000",
+  "filledAt": "2026-11-04T18:30:03.000Z",
+  "detectedAt": null,
+  "bot": "8SMA IC",
+  "candidates": [
+   "8SMA IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 25 wide, calls 100 wide, 0DTE, 13:30 ET: 8SMA IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "C",
+    "strike": 7725,
+    "qty": -1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7685,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "C",
+    "strike": 7825,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7710,
+    "qty": -1,
+    "expiration": "2026-11-04"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 9.65,
+  "rules": {
+   "stop": null,
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0002000000000000",
+  "filledAt": "2026-11-04T18:35:07.000Z",
+  "detectedAt": null,
+  "bot": "$8 IC",
+  "candidates": [
+   "$8 IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron butterfly, puts 50 wide, calls 50 wide, 0DTE, 13:35 ET: $8 IC in its entry window",
+  "structure": "iron butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "C",
+    "strike": 7705,
+    "qty": -1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7655,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "C",
+    "strike": 7755,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7705,
+    "qty": -1,
+    "expiration": "2026-11-04"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 16,
+  "rules": {
+   "stop": null,
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0003000000000000",
+  "filledAt": "2026-11-04T18:50:02.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 13:50 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7730,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7700,
+    "qty": -2,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7655,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -15.75,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ },
+ {
+  "id": "fixture0004000000000000",
+  "filledAt": "2026-11-04T19:20:15.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 14:20 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7740,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7710,
+    "qty": -2,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7665,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -17.85,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ },
+ {
+  "id": "fixture0005000000000000",
+  "filledAt": "2026-11-04T19:30:06.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 14:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7670,
+    "qty": -1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "C",
+    "strike": 7835,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7570,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "C",
+    "strike": 7735,
+    "qty": -1,
+    "expiration": "2026-11-04"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 0.7,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0006000000000000",
+  "filledAt": "2026-11-04T19:50:05.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 14:50 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7660,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7735,
+    "qty": 1,
+    "expiration": "2026-11-04"
+   },
+   {
+    "putCall": "P",
+    "strike": 7705,
+    "qty": -2,
+    "expiration": "2026-11-04"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -19.35,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ },
+ {
+  "id": "fixture0007000000000000",
+  "filledAt": "2026-11-05T18:30:06.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 13:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "C",
+    "strike": 7525,
+    "qty": -1,
+    "expiration": "2026-11-05"
+   },
+   {
+    "putCall": "C",
+    "strike": 7625,
+    "qty": 1,
+    "expiration": "2026-11-05"
+   },
+   {
+    "putCall": "P",
+    "strike": 7155,
+    "qty": 1,
+    "expiration": "2026-11-05"
+   },
+   {
+    "putCall": "P",
+    "strike": 7255,
+    "qty": -1,
+    "expiration": "2026-11-05"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 2.5,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0008000000000000",
+  "filledAt": "2026-11-05T19:30:04.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 14:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "C",
+    "strike": 7495,
+    "qty": -1,
+    "expiration": "2026-11-05"
+   },
+   {
+    "putCall": "P",
+    "strike": 7175,
+    "qty": 1,
+    "expiration": "2026-11-05"
+   },
+   {
+    "putCall": "C",
+    "strike": 7595,
+    "qty": 1,
+    "expiration": "2026-11-05"
+   },
+   {
+    "putCall": "P",
+    "strike": 7275,
+    "qty": -1,
+    "expiration": "2026-11-05"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 2.2,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0009000000000000",
+  "filledAt": "2026-11-06T18:30:12.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 13:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "C",
+    "strike": 7465,
+    "qty": -1,
+    "expiration": "2026-11-06"
+   },
+   {
+    "putCall": "P",
+    "strike": 7205,
+    "qty": 1,
+    "expiration": "2026-11-06"
+   },
+   {
+    "putCall": "C",
+    "strike": 7565,
+    "qty": 1,
+    "expiration": "2026-11-06"
+   },
+   {
+    "putCall": "P",
+    "strike": 7305,
+    "qty": -1,
+    "expiration": "2026-11-06"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 1.55,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0010000000000000",
+  "filledAt": "2026-11-06T19:30:04.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 14:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7240,
+    "qty": 1,
+    "expiration": "2026-11-06"
+   },
+   {
+    "putCall": "C",
+    "strike": 7545,
+    "qty": 1,
+    "expiration": "2026-11-06"
+   },
+   {
+    "putCall": "C",
+    "strike": 7445,
+    "qty": -1,
+    "expiration": "2026-11-06"
+   },
+   {
+    "putCall": "P",
+    "strike": 7340,
+    "qty": -1,
+    "expiration": "2026-11-06"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 1.1,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0011000000000000",
+  "filledAt": "2026-11-09T18:30:13.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 13:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7485,
+    "qty": -1,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "C",
+    "strike": 7685,
+    "qty": 1,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "P",
+    "strike": 7385,
+    "qty": 1,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "C",
+    "strike": 7585,
+    "qty": -1,
+    "expiration": "2026-11-09"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 0.7,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0012000000000000",
+  "filledAt": "2026-11-09T18:50:04.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 13:50 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7585,
+    "qty": 1,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "P",
+    "strike": 7555,
+    "qty": -2,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "P",
+    "strike": 7510,
+    "qty": 1,
+    "expiration": "2026-11-09"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -17.4,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ },
+ {
+  "id": "fixture0013000000000000",
+  "filledAt": "2026-11-09T19:20:02.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 14:20 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7580,
+    "qty": 1,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "P",
+    "strike": 7550,
+    "qty": -2,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "P",
+    "strike": 7505,
+    "qty": 1,
+    "expiration": "2026-11-09"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -19.6,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ },
+ {
+  "id": "fixture0014000000000000",
+  "filledAt": "2026-11-09T19:30:09.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 14:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "C",
+    "strike": 7570,
+    "qty": -1,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "P",
+    "strike": 7395,
+    "qty": 1,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "C",
+    "strike": 7670,
+    "qty": 1,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "P",
+    "strike": 7495,
+    "qty": -1,
+    "expiration": "2026-11-09"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 0.6,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0015000000000000",
+  "filledAt": "2026-11-09T19:50:03.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 14:50 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7560,
+    "qty": -2,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "P",
+    "strike": 7515,
+    "qty": 1,
+    "expiration": "2026-11-09"
+   },
+   {
+    "putCall": "P",
+    "strike": 7590,
+    "qty": 1,
+    "expiration": "2026-11-09"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -17.85,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ },
+ {
+  "id": "fixture0016000000000000",
+  "filledAt": "2026-11-10T18:30:03.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 13:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7435,
+    "qty": -1,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "C",
+    "strike": 7630,
+    "qty": 1,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "P",
+    "strike": 7335,
+    "qty": 1,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "C",
+    "strike": 7530,
+    "qty": -1,
+    "expiration": "2026-11-10"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 1.1,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0017000000000000",
+  "filledAt": "2026-11-10T18:50:10.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 13:50 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7525,
+    "qty": 1,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "P",
+    "strike": 7495,
+    "qty": -2,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "P",
+    "strike": 7450,
+    "qty": 1,
+    "expiration": "2026-11-10"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -15.05,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ },
+ {
+  "id": "fixture0018000000000000",
+  "filledAt": "2026-11-10T19:20:15.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 14:20 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7535,
+    "qty": 1,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "P",
+    "strike": 7505,
+    "qty": -2,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "P",
+    "strike": 7460,
+    "qty": 1,
+    "expiration": "2026-11-10"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -16.2,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ },
+ {
+  "id": "fixture0019000000000000",
+  "filledAt": "2026-11-10T19:30:08.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 14:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "C",
+    "strike": 7545,
+    "qty": -1,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "P",
+    "strike": 7370,
+    "qty": 1,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "C",
+    "strike": 7645,
+    "qty": 1,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "P",
+    "strike": 7470,
+    "qty": -1,
+    "expiration": "2026-11-10"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 0.75,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0020000000000000",
+  "filledAt": "2026-11-10T19:50:03.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 14:50 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7550,
+    "qty": 1,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "P",
+    "strike": 7520,
+    "qty": -2,
+    "expiration": "2026-11-10"
+   },
+   {
+    "putCall": "P",
+    "strike": 7475,
+    "qty": 1,
+    "expiration": "2026-11-10"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -17.25,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ },
+ {
+  "id": "fixture0021000000000000",
+  "filledAt": "2026-11-11T18:30:03.000Z",
+  "detectedAt": null,
+  "bot": null,
+  "candidates": [],
+  "match": "none",
+  "matchConfidence": 0,
+  "matchReason": "iron condor, puts 55 wide, calls 50 wide, 0DTE, 13:30 ET: no book strategy has this structure",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "C",
+    "strike": 7660,
+    "qty": -1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7590,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "C",
+    "strike": 7710,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7645,
+    "qty": -1,
+    "expiration": "2026-11-11"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 8.05,
+  "rules": {
+   "stop": null,
+   "target": null
+  }
+ },
+ {
+  "id": "fixture0022000000000000",
+  "filledAt": "2026-11-11T18:30:08.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 13:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "C",
+    "strike": 7675,
+    "qty": -1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7500,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "C",
+    "strike": 7775,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7600,
+    "qty": -1,
+    "expiration": "2026-11-11"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 0.7,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0023000000000000",
+  "filledAt": "2026-11-11T18:35:02.000Z",
+  "detectedAt": null,
+  "bot": null,
+  "candidates": [],
+  "match": "none",
+  "matchConfidence": 0,
+  "matchReason": "iron condor, puts 55 wide, calls 50 wide, 0DTE, 13:35 ET: no book strategy has this structure",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7645,
+    "qty": -1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "C",
+    "strike": 7690,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7590,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "C",
+    "strike": 7640,
+    "qty": -1,
+    "expiration": "2026-11-11"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 14.7,
+  "rules": {
+   "stop": null,
+   "target": null
+  }
+ },
+ {
+  "id": "fixture0024000000000000",
+  "filledAt": "2026-11-11T18:50:02.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 13:50 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7680,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7650,
+    "qty": -2,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7605,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -18.85,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ },
+ {
+  "id": "fixture0025000000000000",
+  "filledAt": "2026-11-11T19:20:04.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 14:20 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7655,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7625,
+    "qty": -2,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7580,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -16.05,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ },
+ {
+  "id": "fixture0026000000000000",
+  "filledAt": "2026-11-11T19:30:12.000Z",
+  "detectedAt": null,
+  "bot": "5d IC",
+  "candidates": [
+   "5d IC"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "iron condor, puts 100 wide, calls 100 wide, 0DTE, 14:30 ET: 5d IC in its entry window",
+  "structure": "iron condor",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "C",
+    "strike": 7655,
+    "qty": -1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7485,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "C",
+    "strike": 7755,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7585,
+    "qty": -1,
+    "expiration": "2026-11-11"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": 0.6,
+  "rules": {
+   "stop": "300% of credit (OO SL300)",
+   "target": "expire"
+  }
+ },
+ {
+  "id": "fixture0027000000000000",
+  "filledAt": "2026-11-11T19:50:03.000Z",
+  "detectedAt": null,
+  "bot": "BWB",
+  "candidates": [
+   "BWB"
+  ],
+  "match": "exact",
+  "matchConfidence": 1,
+  "matchReason": "put broken-wing butterfly, 0DTE, 14:50 ET: BWB in its entry window",
+  "structure": "put broken-wing butterfly",
+  "underlying": "SPX",
+  "legs": [
+   {
+    "putCall": "P",
+    "strike": 7590,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7665,
+    "qty": 1,
+    "expiration": "2026-11-11"
+   },
+   {
+    "putCall": "P",
+    "strike": 7635,
+    "qty": -2,
+    "expiration": "2026-11-11"
+   }
+  ],
+  "contracts": 1,
+  "netPrice": -19.35,
+  "rules": {
+   "stop": null,
+   "target": "time exit 15:50 ET, then expire"
+  }
+ }
+]

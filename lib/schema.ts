@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS news (
   url text NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS news_ts_idx ON news (ts);
+ALTER TABLE news ADD COLUMN IF NOT EXISTS author text NOT NULL DEFAULT '';
 
 -- One row per processed minute (ET wall time); data holds the Features object.
 CREATE TABLE IF NOT EXISTS features (
@@ -55,6 +56,39 @@ CREATE TABLE IF NOT EXISTS decisions (
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (date, strategy, source)
 );
+
+-- 10:50 call versions (model, prompt, schema, inputs). Calls before versions existed have version_id NULL = v1.
+CREATE TABLE IF NOT EXISTS book_versions (
+  id serial PRIMARY KEY,
+  hash text NOT NULL UNIQUE,
+  model text,
+  spec jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE decisions ADD COLUMN IF NOT EXISTS version_id int;
+
+-- Every Schwab entry since Oct 19, 2026 as oo-trading reports it (live fills, not uploads), refreshed on sync.
+-- The bot is stored as oo-trading names it plus VIX at entry; the settings bot is derived when scoring.
+CREATE TABLE IF NOT EXISTS book_entries (
+  entry_id text PRIMARY KEY,
+  entry_date date NOT NULL,          -- ET date of the fill (calls are matched on this, not the close date)
+  filled_at timestamptz NOT NULL,
+  raw_bot text,
+  match text NOT NULL,
+  match_confidence double precision NOT NULL,
+  vix_at_entry double precision,
+  vix_source text,                   -- snapshot | daily_close | null
+  structure text NOT NULL,
+  legs jsonb NOT NULL,
+  contracts double precision NOT NULL,
+  net_price double precision NOT NULL,
+  status text NOT NULL,              -- open | closed
+  pl double precision,
+  closed_at timestamptz,
+  how text,
+  synced_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS book_entries_date_idx ON book_entries (entry_date);
 
 -- The LLM's market read and raw output, one row per day.
 CREATE TABLE IF NOT EXISTS llm_reads (
@@ -107,6 +141,10 @@ CREATE TABLE IF NOT EXISTS settings (
 
 -- Append-only guard: logged decisions, versions, verdicts and ideas are never edited or deleted.
 CREATE OR REPLACE FUNCTION forbid_change() RETURNS trigger AS $fn$ BEGIN RAISE EXCEPTION 'table % is append-only', TG_TABLE_NAME; END $fn$ LANGUAGE plpgsql;
+-- 10:50 calls and their versions are never edited or deleted.
+CREATE OR REPLACE TRIGGER book_versions_ro BEFORE UPDATE OR DELETE ON book_versions FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE OR REPLACE TRIGGER decisions_ro BEFORE UPDATE OR DELETE ON decisions FOR EACH ROW EXECUTE FUNCTION forbid_change();
+CREATE OR REPLACE TRIGGER decisions_rot BEFORE TRUNCATE ON decisions FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
 
 CREATE TABLE IF NOT EXISTS trader_versions (
   id serial PRIMARY KEY,
@@ -309,6 +347,17 @@ CREATE TABLE IF NOT EXISTS entry_calls (
 CREATE INDEX IF NOT EXISTS entry_calls_filled_idx ON entry_calls (filled_at);
 CREATE OR REPLACE TRIGGER entry_calls_ro BEFORE UPDATE OR DELETE ON entry_calls FOR EACH ROW EXECUTE FUNCTION forbid_change();
 CREATE OR REPLACE TRIGGER entry_calls_rot BEFORE TRUNCATE ON entry_calls FOR EACH STATEMENT EXECUTE FUNCTION forbid_change();
+
+-- v2: how the bot was matched, and which reply fields were trimmed to the word limit (null = none).
+ALTER TABLE entry_calls ADD COLUMN IF NOT EXISTS match_source text;
+ALTER TABLE entry_calls ADD COLUMN IF NOT EXISTS trimmed jsonb;
+
+-- Schwab net liquidation value as oo-trading reported it (live on each poll, and each stored end of day).
+CREATE TABLE IF NOT EXISTS entry_nlv (
+  at timestamptz PRIMARY KEY,
+  net_liq double precision NOT NULL,
+  source text NOT NULL             -- live | eod
+);
 
 -- Actual P/L per entry (from oo-trading's Schwab fills), filled in after the trade closes.
 CREATE TABLE IF NOT EXISTS entry_outcomes (

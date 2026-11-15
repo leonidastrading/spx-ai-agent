@@ -178,12 +178,13 @@ describe("trader engine, one morning", () => {
     expect((await ts.tradesForDate(S.date))[0]).toMatchObject({ status: "closed", exitPrice: 440.4, exitReason: "time" });
   });
 
-  it("bad data: a missing bar means no action and no model call", async () => {
+  it("bad data: two missing bars (one is tolerated) means no action and no model call", async () => {
+    missing.add(etToUtc(S.date, "10:07").toISOString()); // after the 10:07 tick, so not stored yet
     missing.add(etToUtc(S.date, "10:08").toISOString());
     const calls = modelCalls;
     await tick("10:10");
     expect(modelCalls).toBe(calls);
-    expect((await decisions()).at(-1)).toMatchObject({ slot: "2024-03-11 10:10", status: "no_action", reason: expect.stringMatching(/bad data: missing 1-min bars at 10:08/) });
+    expect((await decisions()).at(-1)).toMatchObject({ slot: "2024-03-11 10:10", status: "no_action", reason: expect.stringMatching(/bad data: missing 1-min bars at 10:07, 10:08/) });
     missing.clear();
   });
 
