@@ -55,8 +55,8 @@ export const MODEL_PRICES: Record<string, { input: number; output: number; cache
 
 /** Part B: swing ideas sleeve. */
 export const SWING = {
+  /** Base for the sleeve's return %; not a limit on idea sizes. */
   sleeve: 100_000,
-  maxPositionFraction: 0.1,
   verdictClosedIdeas: 30,
   verdictMonths: 6,
   /** Reserved for the day trader, and leveraged/inverse funds (no leverage in either part). */

@@ -80,8 +80,8 @@ describe("swing ideas end to end", () => {
     expect(calls.at(-1)).toBe("market sell 25 MSFT");
   });
 
-  it("enforces sleeve limits against live ideas and blocks QQQ / leveraged funds", async () => {
-    expect(await submitIdea(idea({ notional: 12000 }), deps)).toMatchObject({ ok: false, errors: [expect.stringMatching(/per-position cap/)] });
+  it("no size or sleeve caps; blocks QQQ / leveraged funds", async () => {
+    expect(await submitIdea(idea({ ticker: "GOOGL", notional: 250000 }), deps)).toMatchObject({ ok: true }); // no per-idea or sleeve cap
     expect(await submitIdea(idea({ speculative: true, notional: 3000 }), deps)).toMatchObject({ ok: true });
     expect(await submitIdea(idea({ ticker: "AMZN", speculative: true, notional: 9000 }), deps)).toMatchObject({ ok: true }); // no speculative cap
     expect(await submitIdea(idea({ ticker: "SQQQ" }), deps)).toMatchObject({ ok: false });

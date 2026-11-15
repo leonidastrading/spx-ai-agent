@@ -42,8 +42,8 @@ export default async function SwingPage() {
     <>
       <h1>Swing ideas · paper</h1>
       <section className="card notice small">
-        Your own ideas, written down with an exit rule before entry, scored against SPY. Paper sleeve {usd(SWING.sleeve)} on the Alpaca paper account; no position above{" "}
-        {SWING.maxPositionFraction * 100}% ({usd(SWING.sleeve * SWING.maxPositionFraction)}). Ideas are
+        Your own ideas, written down with an exit rule before entry, scored against SPY. Paper sleeve on the Alpaca paper account, with no cap on idea size or on the total (returns are measured against
+        {usd(SWING.sleeve)}). Ideas are
         locked once saved; exits follow the stated rule automatically. No margin, leverage, leveraged funds or options; QQQ is reserved for the day trader.
         <PaperAccount part="swing" />
       </section>
@@ -51,7 +51,7 @@ export default async function SwingPage() {
       <section className="card">
         <h2>Sleeve</h2>
         <div className="grid">
-          <div><div className="small secondary">In use</div><b>{usd(used)}</b> <span className="muted small">of {usd(SWING.sleeve)}</span></div>
+          <div><div className="small secondary">In use</div><b>{usd(used)}</b></div>
           <div>
             <div className="small secondary">Sleeve P/L (realized + open)</div>
             <b className={cls(summary.sleeveReturn)}>{usd(summary.realizedPl + summary.unrealizedPl)}</b>{" "}
@@ -73,7 +73,7 @@ export default async function SwingPage() {
 
       <section className="card">
         <h2>New idea</h2>
-        <IdeaForm maxPosition={SWING.sleeve * SWING.maxPositionFraction} />
+        <IdeaForm />
       </section>
 
       <section className="card">

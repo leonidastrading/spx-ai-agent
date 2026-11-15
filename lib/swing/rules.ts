@@ -71,14 +71,10 @@ export function ideaState(events: IdeaEvent[]): IdeaState {
   return s;
 }
 
-/** Sleeve limits for a new idea against the ideas still holding (or reserving) capital. */
-export function sleeveProblems(input: IdeaInput, active: Array<{ notional: number; speculative: boolean }>, refPrice: number): string[] {
+/** Checks on a new idea: allowed ticker, at least one share, and a sensible exit rule. No size or sleeve caps. */
+export function sleeveProblems(input: IdeaInput, refPrice: number): string[] {
   const out: string[] = [];
   if (SWING.blockedTickers.includes(input.ticker)) out.push(`${input.ticker} is not allowed (reserved for the day trader, or a leveraged/inverse fund)`);
-  const maxPos = SWING.sleeve * SWING.maxPositionFraction;
-  if (input.notional > maxPos) out.push(`size $${input.notional} is above the per-position cap of $${maxPos}`);
-  const used = active.reduce((a, i) => a + i.notional, 0);
-  if (used + input.notional > SWING.sleeve) out.push(`sleeve would exceed $${SWING.sleeve} (in use: $${used})`);
   if (Math.floor(input.notional / refPrice) < 1) out.push(`size is less than one share at ~$${refPrice}`);
   if (input.exitRule === "target") {
     const ok = input.side === "long" ? input.exitParam > refPrice : input.exitParam < refPrice;

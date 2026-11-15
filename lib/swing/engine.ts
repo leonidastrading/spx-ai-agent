@@ -37,7 +37,7 @@ export async function submitIdea(raw: unknown, deps: { data: DataClient; broker:
   const [ideas, events] = await Promise.all([ts.allIdeas(), ts.allIdeaEvents()]);
   const states = statesByIdea(ideas, events);
   const active = ideas.filter((i) => ["pending_entry", "open", "closing"].includes(states.get(i.id)!.status));
-  const problems = sleeveProblems(input, active, ref);
+  const problems = sleeveProblems(input, ref);
   if (problems.length) return { ok: false, errors: problems };
   // The sleeve's account should only hold what this log opened.
   if (!active.some((i) => i.ticker === input.ticker)) {
