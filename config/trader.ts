@@ -57,7 +57,6 @@ export const MODEL_PRICES: Record<string, { input: number; output: number; cache
 export const SWING = {
   sleeve: 100_000,
   maxPositionFraction: 0.1,
-  maxSpeculativeFraction: 0.05,
   verdictClosedIdeas: 30,
   verdictMonths: 6,
   /** Reserved for the day trader, and leveraged/inverse funds (no leverage in either part). */

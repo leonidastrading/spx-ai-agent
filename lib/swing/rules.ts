@@ -79,11 +79,6 @@ export function sleeveProblems(input: IdeaInput, active: Array<{ notional: numbe
   if (input.notional > maxPos) out.push(`size $${input.notional} is above the per-position cap of $${maxPos}`);
   const used = active.reduce((a, i) => a + i.notional, 0);
   if (used + input.notional > SWING.sleeve) out.push(`sleeve would exceed $${SWING.sleeve} (in use: $${used})`);
-  if (input.speculative) {
-    const spec = active.filter((i) => i.speculative).reduce((a, i) => a + i.notional, 0);
-    const cap = SWING.sleeve * SWING.maxSpeculativeFraction;
-    if (spec + input.notional > cap) out.push(`speculative ideas would total $${spec + input.notional}, above the $${cap} cap`);
-  }
   if (Math.floor(input.notional / refPrice) < 1) out.push(`size is less than one share at ~$${refPrice}`);
   if (input.exitRule === "target") {
     const ok = input.side === "long" ? input.exitParam > refPrice : input.exitParam < refPrice;
