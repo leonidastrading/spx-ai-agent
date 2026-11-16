@@ -4,7 +4,7 @@ import { SWING } from "@/config/trader";
 import { AlpacaClient, credsFromEnv, referenceHostFromEnv } from "@/lib/alpaca";
 import * as store from "@/lib/db";
 import { statesByIdea } from "@/lib/swing/engine";
-import { ideaReturn, swingSummary } from "@/lib/swing/rules";
+import { ideaReturn, markPrice, quoteMid, swingSummary } from "@/lib/swing/rules";
 import * as ts from "@/lib/trader/store";
 import { toEt } from "@/lib/time";
 import IdeaForm from "./IdeaForm";
@@ -21,14 +21,28 @@ export default async function SwingPage() {
   const [ideas, events] = await Promise.all([ts.allIdeas(), ts.allIdeaEvents()]);
   const states = statesByIdea(ideas, events);
 
-  // Mark open ideas and SPY at the latest quote (best effort).
+  // Mark open ideas and SPY at the latest quote, or at the latest close when the quote is one-sided or wide
+  // (outside market hours a 0 bid would halve the price). Best effort.
   const live = ideas.filter((i) => ["open", "closing"].includes(states.get(i.id)!.status));
   let marks: Record<string, number> = {};
   try {
     const alpaca = new AlpacaClient({ creds: credsFromEnv(), referenceHost: referenceHostFromEnv(), maxRetries: 1 });
     const feed = await alpaca.resolveFeed({ forced: process.env.ALPACA_FEED });
-    const quotes = await alpaca.getLatestQuotes([...new Set([...live.map((i) => i.ticker), "SPY"])], feed);
-    marks = Object.fromEntries(Object.entries(quotes).map(([k, q]) => [k, (q.bid + q.ask) / 2]));
+    const symbols = [...new Set([...live.map((i) => i.ticker), "SPY"])];
+    const quotes = await alpaca.getLatestQuotes(symbols, feed);
+    const needClose = symbols.filter((s) => quoteMid(quotes[s]) === null);
+    const lastClose: Record<string, number> = {};
+    if (needClose.length) {
+      const now = new Date();
+      const bars = await alpaca
+        .getBars({ symbols: needClose, start: new Date(now.getTime() - 10 * 86400000), end: now, feed, timeframe: "1Day" })
+        .catch(() => []);
+      for (const b of bars) lastClose[b.symbol] = b.c; // ascending, so the latest bar wins
+    }
+    for (const s of symbols) {
+      const m = markPrice(quotes[s], lastClose[s]);
+      if (m !== null) marks[s] = m;
+    }
   } catch {
     /* marks stay empty; realized results still show */
   }
