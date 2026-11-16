@@ -85,6 +85,25 @@ export function sleeveProblems(input: IdeaInput, refPrice: number): string[] {
   return out;
 }
 
+/** Widest bid/ask spread, as a fraction of the midpoint, that still gives a usable mark. */
+export const MAX_MARK_SPREAD = 0.05;
+
+/**
+ * Midpoint of a quote, or null when the quote can't be trusted: a side is missing or 0 (common outside
+ * market hours, where averaging a 0 bid with the ask halves the price), the quote is crossed, or the
+ * spread is wider than MAX_MARK_SPREAD.
+ */
+export function quoteMid(q: { bid: number; ask: number } | null | undefined): number | null {
+  if (!q || !(q.bid > 0) || !(q.ask > 0) || q.ask < q.bid) return null;
+  const mid = (q.bid + q.ask) / 2;
+  return (q.ask - q.bid) / mid <= MAX_MARK_SPREAD ? mid : null;
+}
+
+/** Price to mark an open idea at: a trustworthy quote midpoint, else the latest close, else none. */
+export function markPrice(q: { bid: number; ask: number } | null | undefined, lastClose: number | null | undefined): number | null {
+  return quoteMid(q) ?? (lastClose && lastClose > 0 ? lastClose : null);
+}
+
 /** Return of one closed (or marked) idea, and SPY over the same period. */
 export function ideaReturn(side: "long" | "short", entry: number, exit: number, spyEntry: number | null, spyExit: number | null) {
   const ret = (side === "long" ? 1 : -1) * (exit / entry - 1);

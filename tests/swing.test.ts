@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ideaState, sleeveProblems, swingSummary, timeLimitDue, type Idea, type IdeaEvent, type IdeaInput } from "@/lib/swing/rules";
+import { ideaState, markPrice, quoteMid, sleeveProblems, swingSummary, timeLimitDue, type Idea, type IdeaEvent, type IdeaInput } from "@/lib/swing/rules";
 
 const input = (p: Partial<IdeaInput> = {}): IdeaInput => ({ ticker: "AAPL", side: "long", thesis: "Panic dip on a non-event.", catalyst: "panic_dip", speculative: false, notional: 5000, exitRule: "target", exitParam: 220, ...p });
 
@@ -44,5 +44,23 @@ describe("idea lifecycle from append-only events", () => {
     expect(s.verdictDue).toBe(true);
     expect(s.realizedPl).toBe(20 * 200 - 10 * 100);
     expect(s.verdict).toBe("beats SPY"); // avg excess +1%, sleeve +3% vs SPY +1%
+  });
+});
+
+describe("marks", () => {
+  it("uses the midpoint only for a two-sided, tight quote", () => {
+    expect(quoteMid({ bid: 25.3, ask: 25.5 })).toBeCloseTo(25.4, 6);
+    // Overnight: a 0 bid would halve the price (URGN showed 11.63 against a 23.26 ask).
+    expect(quoteMid({ bid: 0, ask: 23.26 })).toBeNull();
+    expect(quoteMid({ bid: 23.26, ask: 0 })).toBeNull();
+    expect(quoteMid({ bid: 26, ask: 25 })).toBeNull(); // crossed
+    expect(quoteMid({ bid: 20, ask: 30 })).toBeNull(); // 40% wide
+    expect(quoteMid(undefined)).toBeNull();
+  });
+  it("falls back to the latest close, else no mark", () => {
+    expect(markPrice({ bid: 0, ask: 23.26 }, 25.1)).toBe(25.1);
+    expect(markPrice({ bid: 25.3, ask: 25.5 }, 20)).toBeCloseTo(25.4, 6);
+    expect(markPrice({ bid: 0, ask: 23.26 }, null)).toBeNull();
+    expect(markPrice(undefined, 0)).toBeNull();
   });
 });
