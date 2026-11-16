@@ -4,19 +4,18 @@ import { ideaState, sleeveProblems, swingSummary, timeLimitDue, type Idea, type 
 const input = (p: Partial<IdeaInput> = {}): IdeaInput => ({ ticker: "AAPL", side: "long", thesis: "Panic dip on a non-event.", catalyst: "panic_dip", speculative: false, notional: 5000, exitRule: "target", exitParam: 220, ...p });
 
 describe("sleeve limits", () => {
-  it("10% per position, 5% speculative total, sleeve cap, blocked tickers", () => {
-    expect(sleeveProblems(input(), [], 200)).toEqual([]);
-    expect(sleeveProblems(input({ notional: 10001 }), [], 200)[0]).toMatch(/per-position cap/);
-    expect(sleeveProblems(input({ speculative: true, notional: 3000 }), [{ notional: 2500, speculative: true }], 200)[0]).toMatch(/speculative ideas would total \$5500/);
-    expect(sleeveProblems(input({ notional: 6000 }), Array(10).fill({ notional: 9500, speculative: false }), 200)[0]).toMatch(/sleeve would exceed/);
-    expect(sleeveProblems(input({ ticker: "TQQQ" }), [], 50)[0]).toMatch(/not allowed/);
-    expect(sleeveProblems(input({ ticker: "QQQ" }), [], 450)[0]).toMatch(/reserved/);
+  it("no size or sleeve caps; blocked tickers", () => {
+    expect(sleeveProblems(input(), 200)).toEqual([]);
+    expect(sleeveProblems(input({ notional: 250000 }), 200)).toEqual([]);
+    expect(sleeveProblems(input({ speculative: true, notional: 250000 }), 200)).toEqual([]);
+    expect(sleeveProblems(input({ ticker: "TQQQ" }), 50)[0]).toMatch(/not allowed/);
+    expect(sleeveProblems(input({ ticker: "QQQ" }), 450)[0]).toMatch(/reserved/);
   });
   it("exit rule sanity", () => {
-    expect(sleeveProblems(input({ exitParam: 190 }), [], 200)[0]).toMatch(/above the current price/);
-    expect(sleeveProblems(input({ side: "short", exitParam: 190 }), [], 200)).toEqual([]);
-    expect(sleeveProblems(input({ exitRule: "trailing", exitParam: 40 }), [], 200)[0]).toMatch(/0\.5%–30%/);
-    expect(sleeveProblems(input({ exitRule: "time", exitParam: 2.5 }), [], 200)[0]).toMatch(/whole days/);
+    expect(sleeveProblems(input({ exitParam: 190 }), 200)[0]).toMatch(/above the current price/);
+    expect(sleeveProblems(input({ side: "short", exitParam: 190 }), 200)).toEqual([]);
+    expect(sleeveProblems(input({ exitRule: "trailing", exitParam: 40 }), 200)[0]).toMatch(/0\.5%–30%/);
+    expect(sleeveProblems(input({ exitRule: "time", exitParam: 2.5 }), 200)[0]).toMatch(/whole days/);
   });
 });
 

@@ -255,8 +255,8 @@ by code (`config/trader.ts`, `lib/trader/rules.ts`), never by the model.
   entry price is the fill. If the market is closed, the order is queued for the open. Only one live idea per
   ticker is allowed (Alpaca nets positions per symbol), and a ticker the account already holds from outside the
   log is refused.
-- **Sleeve limits.** The sleeve is $100,000. No idea may be above $10,000, and speculative ideas may total at most
-  $5,000. QQQ, leveraged and inverse funds, and anything Alpaca can't trade (or can't easily borrow, for shorts)
+- **Sleeve limits.** There is no cap on an idea's size or on the sleeve's total; $100,000 is only the base for the
+  sleeve's return %. The speculative flag is a tag for scoring only. QQQ, leveraged and inverse funds, and anything Alpaca can't trade (or can't easily borrow, for shorts)
   are refused.
 - **Exits.** Exits follow the rule automatically: a GTC limit order for a target, a GTC trailing-stop order, or a
   market order once the time limit passes (checked by the trader tick).

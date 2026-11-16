@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-export default function IdeaForm({ maxPosition, specLeft }: { maxPosition: number; specLeft: number }) {
+export default function IdeaForm() {
   const [f, setF] = useState({ ticker: "", side: "long", thesis: "", catalyst: "news", speculative: false, notional: "5000", exitRule: "target", exitParam: "" });
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
@@ -36,11 +36,9 @@ export default function IdeaForm({ maxPosition, specLeft }: { maxPosition: numbe
             <option value="news">news</option><option value="panic_dip">panic dip</option><option value="theme">theme</option><option value="earnings">earnings</option>
           </select></label>
         <label className="field"><span className="field-label">Size ($)</span>
-          <input type="number" min="1" step="1" required value={f.notional} onChange={(e) => set("notional", e.target.value)} />
-          <span className="field-hint">max ${maxPosition.toLocaleString()} per idea</span></label>
+          <input type="number" min="1" step="1" required value={f.notional} onChange={(e) => set("notional", e.target.value)} /></label>
         <label className="field"><span className="field-label">Speculative</span>
-          <span className="toggle"><input type="checkbox" checked={f.speculative} onChange={(e) => set("speculative", e.target.checked)} /> Speculative</span>
-          <span className="field-hint">${specLeft.toLocaleString()} of the speculative cap left</span></label>
+          <span className="toggle"><input type="checkbox" checked={f.speculative} onChange={(e) => set("speculative", e.target.checked)} /> Speculative</span></label>
         <label className="field"><span className="field-label">Exit rule (fixed at entry)</span>
           <select value={f.exitRule} onChange={(e) => set("exitRule", e.target.value)}>
             <option value="target">price target</option><option value="trailing">trailing stop</option><option value="time">time limit</option>
