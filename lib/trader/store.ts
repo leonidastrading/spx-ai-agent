@@ -164,6 +164,14 @@ export async function costByDay(versionId: number) {
   return rows.map((r) => ({ date: r.date as string, cost: num(r.cost) ?? 0, calls: Number(r.calls) }));
 }
 
+/** LLM spend per ET date and version, every version. */
+export async function costByDayAllVersions() {
+  const rows = await q(
+    `SELECT substr(slot, 1, 10) AS date, version_id, sum(cost_usd) AS cost FROM trader_decisions GROUP BY 1, 2 ORDER BY 1, 2`,
+  );
+  return rows.map((r) => ({ date: r.date as string, versionId: Number(r.version_id), cost: num(r.cost) ?? 0 }));
+}
+
 // ---------------------------------------------------------------- trades
 
 export interface TradeRow {
@@ -237,6 +245,11 @@ export async function activeTrades(): Promise<TradeRow[]> {
 
 export async function tradesForDate(date: string, versionId?: number): Promise<TradeRow[]> {
   return (await q(`SELECT ${TRADE_COLS} FROM trader_trades WHERE date = $1 ${versionId ? "AND version_id = $2" : ""} ORDER BY id`, versionId ? [date, versionId] : [date])).map(toTrade);
+}
+
+/** Every trade of every version, oldest first. */
+export async function allTrades(): Promise<TradeRow[]> {
+  return (await q(`SELECT ${TRADE_COLS} FROM trader_trades ORDER BY date, id`)).map(toTrade);
 }
 
 export async function tradesForVersion(versionId: number): Promise<TradeRow[]> {
