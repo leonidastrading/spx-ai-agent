@@ -160,6 +160,26 @@ describe("runTick", () => {
     expect(requests).toEqual([]); // off-hours: no Alpaca request at all
   });
 
+  it("off-hours and weekend calls touch neither the database nor Alpaca, so Neon can sleep", async () => {
+    const { runTick, databaseHours } = await import("@/lib/agent");
+    for (const iso of [
+      "2024-03-11T07:00:00Z", // Monday 03:00 EDT
+      "2024-03-11T12:59:00Z", // Monday 08:59 EDT
+      "2024-03-11T21:00:00Z", // Monday 17:00 EDT
+      "2024-03-16T15:00:00Z", // Saturday 11:00 EDT
+      "2024-03-17T15:00:00Z", // Sunday 11:00 EDT
+    ]) {
+      expect(databaseHours(new Date(iso)), iso).toBe(false);
+      const r = await runTick(new Date(iso));
+      expect(r.status).toBe("skipped");
+      expect(r.notes.at(-1)).toMatch(/database can sleep/);
+    }
+    expect(mem.runs).toEqual([]);
+    expect(requests).toEqual([]);
+    expect(databaseHours(new Date("2024-03-11T13:00:00Z"))).toBe(true); // Monday 09:00 EDT
+    expect(databaseHours(new Date("2024-03-11T20:59:00Z"))).toBe(true); // Monday 16:59 EDT
+  });
+
   it("checks the Alpaca calendar inside the window (holidays)", async () => {
     const { runTick } = await import("@/lib/agent");
     const r = await runTick(new Date("2024-07-04T14:00:00Z")); // Thursday 10:00 EDT, Independence Day

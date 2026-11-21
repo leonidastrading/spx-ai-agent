@@ -41,7 +41,7 @@ export async function runTick(now = new Date(), opts: { backfillAtr?: boolean } 
   // Weekend / outside-window calls skip before any Alpaca request (holidays need the calendar).
   const etPre = toEt(now);
   const pre = cronGate(now, { date: etPre.date, open: SCHEDULE.windowStart, close: "16:00" }, SCHEDULE);
-  if (pre.action === "skip") return skipRun(pre.reason, backfill ? now : undefined);
+  if (pre.action === "skip") return skipRun(pre.reason, now, backfill);
 
   const alpaca = new AlpacaClient({
     creds: credsFromEnv(),
@@ -53,7 +53,7 @@ export async function runTick(now = new Date(), opts: { backfillAtr?: boolean } 
   const sessions = await alpaca.getCalendar(addDays(etNow.date, -10), etNow.date);
   const gate = cronGate(now, sessionOn(sessions, etNow.date), SCHEDULE);
 
-  if (gate.action === "skip") return skipRun(gate.reason, backfill ? now : undefined);
+  if (gate.action === "skip") return skipRun(gate.reason, now, backfill);
 
   const { session, et } = gate;
   const prior = priorSession(sessions, session.date);
@@ -97,10 +97,29 @@ export async function runTick(now = new Date(), opts: { backfillAtr?: boolean } 
   }
 }
 
-async function skipRun(reason: string, now?: Date): Promise<TickResult> {
+/**
+ * Weekday hours (ET) in which a skipped tick may touch the database: 09:00–16:59, when the trader and entry
+ * ticks keep it awake anyway. Outside them a skipped tick does nothing at all, so Neon can scale to zero
+ * overnight and at weekends (it bills compute while any query arrives within its idle timeout).
+ */
+export function databaseHours(now: Date): boolean {
+  const et = toEt(now);
+  return et.weekday >= 1 && et.weekday <= 5 && et.minutes >= 9 * 60 && et.minutes < 17 * 60;
+}
+
+/** The daily book-entry sync runs in this pre-open slot (ET), once per day. */
+const BOOK_SYNC_FROM = 9 * 60;
+const BOOK_SYNC_UNTIL = 9 * 60 + 30;
+
+async function skipRun(reason: string, now: Date, backfill: boolean): Promise<TickResult> {
   const notes = [reason];
-  // Outside the window, fill the rule's ATR history a batch at a time until the lookback is covered.
-  if (now && process.env.ALPACA_API_KEY_ID && (await store.atrHistoryCount(toEt(now).date)) < RULES.atrLookbackDays) {
+  const skipped = (): TickResult => ({ status: "skipped", action: "skip", minuteEt: null, feed: null, rowsWritten: {}, notes });
+  if (!databaseHours(now)) {
+    notes.push("outside weekday 09:00–17:00 ET: nothing stored, so the database can sleep");
+    return skipped();
+  }
+  // Fill the rule's ATR history a batch at a time until the lookback is covered.
+  if (backfill && process.env.ALPACA_API_KEY_ID && (await store.atrHistoryCount(toEt(now).date)) < RULES.atrLookbackDays) {
     try {
       const alpaca = new AlpacaClient({ creds: credsFromEnv(), referenceHost: referenceHostFromEnv(), maxRetries: 2 });
       const r = await backfillAtrBatch(alpaca, now);
@@ -109,25 +128,22 @@ async function skipRun(reason: string, now?: Date): Promise<TickResult> {
       notes.push(`ATR history backfill failed: ${err instanceof Error ? err.message : err}`);
     }
   }
-  // Once a day outside the session, store every live entry since Oct 19 from oo-trading (for scoring).
-  if (now) {
-    const et = toEt(now);
-    const off = et.weekday === 0 || et.weekday === 6 || et.minutes >= 16 * 60 + 30 || et.minutes < 9 * 60;
-    const exportCfg = exportConfigFromEnv();
-    if (off && exportCfg) {
-      try {
-        if ((await lastFullSync()) !== et.date) {
-          const n = await syncBookHistory(makeExportClient(exportCfg), now, await quoteSnapshotsSince(`${LIVE_SINCE}T00:00:00Z`));
-          notes.push(`book entries synced: ${n}`);
-        }
-      } catch (err) {
-        notes.push(`book entry sync failed: ${err instanceof Error ? err.message : err}`);
+  // Once a day before the open, store every live entry since Oct 19 from oo-trading (for scoring).
+  const et = toEt(now);
+  const exportCfg = exportConfigFromEnv();
+  if (exportCfg && et.minutes >= BOOK_SYNC_FROM && et.minutes < BOOK_SYNC_UNTIL) {
+    try {
+      if ((await lastFullSync()) !== et.date) {
+        const n = await syncBookHistory(makeExportClient(exportCfg), now, await quoteSnapshotsSince(`${LIVE_SINCE}T00:00:00Z`));
+        notes.push(`book entries synced: ${n}`);
       }
+    } catch (err) {
+      notes.push(`book entry sync failed: ${err instanceof Error ? err.message : err}`);
     }
   }
   const id = await store.startRun("skip", null);
   await store.finishRun(id, { status: "skipped", detail: notes.join("; ") });
-  return { status: "skipped", action: "skip", minuteEt: null, feed: null, rowsWritten: {}, notes };
+  return skipped();
 }
 
 /** Fetch bars and headlines newer than what's stored, up to `end` (exclusive). */
