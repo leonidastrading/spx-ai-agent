@@ -53,8 +53,10 @@ Other outbound calls: the Anthropic API, and Resend for email if a key is config
 
 **Schedule.** Something has to call `GET /api/cron/tick` with `Authorization: Bearer $CRON_SECRET` every minute
 on weekday mornings. Each call converts the time to America/New_York and checks the Alpaca calendar. Outside a
-trading day or the 09:30–11:05 ET window it logs a `skipped` run and exits, so calling it more often than
-needed is harmless. Pick one of two ways:
+trading day or the 09:30–11:05 ET window it skips. Between 09:00 and 17:00 ET on weekdays a skip is logged as a
+`skipped` run (and does the daily maintenance: the ATR history backfill, and the book-entry sync before 09:30).
+Outside those hours a skip touches neither the database nor Alpaca, so Neon can scale to zero overnight and at
+weekends. Calling it more often than needed is harmless, but keep the schedules below to save function calls. Pick one of two ways:
 
 - **cron-job.org (works on Vercel Hobby).** Create a job:
   - URL: `https://<your-domain>/api/cron/tick`
