@@ -109,3 +109,13 @@ describe("legacy bot migration with the user's own split names", () => {
   });
 });
 
+describe("0DTE advisors switch", () => {
+  it("defaults to on, also for settings saved before it existed, and round-trips off", () => {
+    const { advisor, ...old } = DEFAULT_SETTINGS;
+    expect(advisor).toEqual({ enabled: true });
+    const v = validateSettings(old);
+    expect(v.ok && v.settings.advisor).toEqual({ enabled: true });
+    expect(mergeSettings(old).advisor).toEqual({ enabled: true });
+    expect(mergeSettings({ ...old, advisor: { enabled: false } }).advisor).toEqual({ enabled: false });
+  });
+});

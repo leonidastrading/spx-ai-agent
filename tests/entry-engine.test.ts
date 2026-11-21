@@ -1,6 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { setQuerierForTests } from "@/lib/db";
+import { resetSettings, saveSettings, setQuerierForTests } from "@/lib/db";
+import { DEFAULT_SETTINGS } from "@/lib/settings";
 import type { OoExport } from "@/lib/entry/contract";
 import { runEntryTick, type EntryDeps } from "@/lib/entry/engine";
 import { accountDrawdown } from "@/lib/entry/packet";
@@ -174,5 +175,16 @@ describe("entry advisor engine", () => {
     const n = (await calls()).length;
     await runEntryTick(deps);
     expect(await calls()).toHaveLength(n);
+  });
+
+  it("does nothing when the 0DTE advisors are off in Settings", async () => {
+    await saveSettings({ ...DEFAULT_SETTINGS, advisor: { enabled: false } });
+    const before = (await calls()).length;
+    let polled = 0;
+    const r = await runEntryTick({ ...deps, fetchExport: async () => (polled++, exp) });
+    expect(r).toEqual({ status: "skipped", notes: ["0DTE advisors are off in Settings"] });
+    expect(polled).toBe(0);
+    expect((await calls()).length).toBe(before);
+    await resetSettings();
   });
 });

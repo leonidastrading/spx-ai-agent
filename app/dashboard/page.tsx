@@ -150,6 +150,12 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
         </span>
       </form>
 
+      {!cfg.advisor.enabled && (
+        <section className="card notice">
+          <b>The 0DTE advisors are off.</b> No morning calls, emails or entry calls are made. Turn them back on in <a href="/settings">Settings</a>. Past results below are kept.
+        </section>
+      )}
+
       <section className="card">
         <h2>Calls for {date} (decided {SCHEDULE.decisionAt} ET){vLabel && <span className="muted small"> · version {vLabel}</span>}</h2>
         {llmError ? (

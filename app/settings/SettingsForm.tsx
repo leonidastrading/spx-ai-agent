@@ -124,6 +124,19 @@ export default function SettingsForm({
       )}
 
       <section className="card">
+        <h2>0DTE advisors</h2>
+        <p className="small secondary">
+          The morning book call (dashboard and 10:50 email) and the entry advisor. Off stops both completely: no data collection, model calls or emails.
+          The day trader and swing ideas keep running.
+        </p>
+        <div className="fields">
+          <Field label="Enabled" hint="Off = both 0DTE advisors stop">
+            <span className="toggle"><input type="checkbox" checked={s.advisor.enabled} onChange={(e) => set("advisor", { enabled: e.target.checked })} /> Run the 0DTE advisors</span>
+          </Field>
+        </div>
+      </section>
+
+      <section className="card">
         <h2>Rule baseline</h2>
         <p className="small secondary">“reduce” if the 30-min ATR is in the top band of the trailing window, or SPY is down more than the threshold at 10:50 ET; otherwise “run”.</p>
         <div className="fields">
