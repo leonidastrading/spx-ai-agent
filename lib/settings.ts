@@ -13,6 +13,11 @@ import { normalizeOoName } from "./optionomega";
 export const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 export interface Settings {
+  /**
+   * The two 0DTE book advisors: the morning call (dashboard, 10:50 email) and the entry advisor. Off stops both
+   * ticks before they do anything; the day trader and swing ideas run in their own tick and are unaffected.
+   */
+  advisor: { enabled: boolean };
   rules: typeof RULES;
   llm: {
     /** Blank = CLAUDE_MODEL env var, else the built-in default. */
@@ -33,6 +38,7 @@ export interface Settings {
 }
 
 export const DEFAULT_SETTINGS: Settings = {
+  advisor: { enabled: true },
   rules: { ...RULES },
   llm: { model: "", effort: "high", maxHeadlines: LLM.maxHeadlines, enabled: true },
   email: { enabled: true, to: "" },
@@ -45,6 +51,8 @@ const terms = z.array(z.string().trim().min(1).max(80)).max(200);
 
 export const settingsSchema = z
   .object({
+    // Optional so settings files saved before this switch existed still validate (it then defaults to on).
+    advisor: z.object({ enabled: z.boolean() }).default({ enabled: true }),
     rules: z.object({
       atrPercentile: z.number().gt(0).lt(1),
       atrLookbackDays: z.number().int().min(20).max(2000),
@@ -129,6 +137,7 @@ export function mergeSettings(stored: unknown): Settings {
   const s = stored as Partial<Settings>;
   const { strategies, ooMap } = migrateLegacyBots(s.strategies ?? DEFAULT_SETTINGS.strategies, s.ooMap ?? DEFAULT_SETTINGS.ooMap);
   const candidate = {
+    advisor: { ...DEFAULT_SETTINGS.advisor, ...(s.advisor ?? {}) },
     rules: { ...DEFAULT_SETTINGS.rules, ...(s.rules ?? {}) },
     llm: { ...DEFAULT_SETTINGS.llm, ...(s.llm ?? {}) },
     email: { ...DEFAULT_SETTINGS.email, ...(s.email ?? {}) },

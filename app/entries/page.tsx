@@ -16,7 +16,7 @@ const hhmmss = (iso: string) => { const e = toEt(new Date(iso)); return `${e.hhm
 export default async function EntriesPage() {
   if (!store.hasDatabase()) return <SetupNotice />;
   const now = toEt(new Date());
-  const cfg = await es.loadEntrySettings();
+  const [cfg, appSettings] = await Promise.all([es.loadEntrySettings(), store.loadSettings()]);
   const model = cfg.model.trim() || ENTRY.defaultModel;
   const versions = await es.listEntryVersions();
   const current = versions.find((v) => v.hash === entryVersionHash(model, cfg.effort)) ?? null;
@@ -36,6 +36,9 @@ export default async function EntriesPage() {
         A call on every bot entry as it fills, logged before the outcome is known, then scored against what the book actually did. <b>Advice only:</b> it never places, changes or blocks a trade,
         and nothing it says reaches Option Omega or Schwab. Entries come from oo-trading’s read-only view of Schwab fills. <Link href="/entries/scoring">Scoring and decision gate →</Link>
         {exportOk && <p className="call-error" style={{ margin: "6px 0 0" }}>Not connected: {exportOk}. See README → Entry advisor.</p>}
+        {!appSettings.advisor.enabled && (
+          <p style={{ margin: "6px 0 0" }}><b>The 0DTE advisors are off</b>, so no entries are polled or called. Turn them back on in <a href="/settings">Settings</a>.</p>
+        )}
       </section>
 
       {verdict && <section className={`card ${verdict.verdict === "fail" ? "errorbox" : "notice"}`}><h2>Decision gate: {verdict.verdict.toUpperCase()}</h2><p className="small">{verdict.verdict === "fail" ? "Calls have stopped for this version; the record is kept." : "Passed. This switches nothing on; it is evidence for acting by hand, at reduced size first."}</p></section>}

@@ -135,6 +135,8 @@ instead of data.
   the random net's mean, 5th and 95th percentiles, and the share of draws that matched or beat the actual net.
 - `/settings`: every input in one place.
   - **Connections & keys:** whether each env var is set. Values are never shown.
+  - **0DTE advisors:** on/off for both the morning book call (dashboard, email) and the entry advisor. Off stops
+    both ticks completely; the day trader and swing ideas keep running.
   - **Rule thresholds:** ATR percentile, lookback, minimum history, SPY down %.
   - **LLM:** on/off, model, effort, number of headlines sent.
   - **Email:** on/off, recipients.

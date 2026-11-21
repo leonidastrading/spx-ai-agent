@@ -38,6 +38,10 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function runTick(now = new Date(), opts: { backfillAtr?: boolean } = {}): Promise<TickResult> {
   const backfill = opts.backfillAtr ?? process.env.ATR_BACKFILL !== "off";
+  // Switched off in Settings: do nothing at all (read only in database hours, so Neon can still sleep off-hours).
+  if (databaseHours(now) && !(await store.loadSettings()).advisor.enabled) {
+    return { status: "skipped", action: "skip", minuteEt: null, feed: null, rowsWritten: {}, notes: ["0DTE advisors are off in Settings"] };
+  }
   // Weekend / outside-window calls skip before any Alpaca request (holidays need the calendar).
   const etPre = toEt(now);
   const pre = cronGate(now, { date: etPre.date, open: SCHEDULE.windowStart, close: "16:00" }, SCHEDULE);

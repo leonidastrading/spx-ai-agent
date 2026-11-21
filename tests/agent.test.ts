@@ -180,6 +180,20 @@ describe("runTick", () => {
     expect(databaseHours(new Date("2024-03-11T20:59:00Z"))).toBe(true); // Monday 16:59 EDT
   });
 
+  it("does nothing when the 0DTE advisors are off in Settings", async () => {
+    const { runTick } = await import("@/lib/agent");
+    const { DEFAULT_SETTINGS } = await import("@/lib/settings");
+    mem.settings = { ...DEFAULT_SETTINGS, advisor: { enabled: false } };
+    for (const hhmm of ["09:05", "10:50", "10:51"]) {
+      const r = await runTick(at(hhmm));
+      expect(r).toMatchObject({ status: "skipped", notes: ["0DTE advisors are off in Settings"] });
+    }
+    expect(mem.runs).toEqual([]);
+    expect(mem.decisions).toEqual([]);
+    expect(requests).toEqual([]);
+    mem.settings = null;
+  });
+
   it("checks the Alpaca calendar inside the window (holidays)", async () => {
     const { runTick } = await import("@/lib/agent");
     const r = await runTick(new Date("2024-07-04T14:00:00Z")); // Thursday 10:00 EDT, Independence Day

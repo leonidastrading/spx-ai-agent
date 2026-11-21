@@ -45,6 +45,7 @@ export async function runEntryTick(deps: EntryDeps): Promise<EntryTickResult> {
   const et = toEt(now);
   const notes: string[] = [];
   if (et.weekday === 0 || et.weekday === 6 || et.minutes < 9 * 60 || et.minutes > 16 * 60 + 59) return { status: "skipped", notes: ["outside 09:00–16:59 ET on a weekday"] };
+  if (!(await store.loadSettings()).advisor.enabled) return { status: "skipped", notes: ["0DTE advisors are off in Settings"] };
   if (!(await acquireLock("entry", 90))) return { status: "busy", notes: ["previous tick still running"] };
   try {
     const cfg = await es.loadEntrySettings();
