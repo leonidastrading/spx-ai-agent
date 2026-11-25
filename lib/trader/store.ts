@@ -256,12 +256,13 @@ export async function tradesForVersion(versionId: number): Promise<TradeRow[]> {
   return (await q(`SELECT ${TRADE_COLS} FROM trader_trades WHERE version_id = $1 ORDER BY id`, [versionId])).map(toTrade);
 }
 
-export async function recordStopChange(tradeId: number, decisionId: number, oldStop: number, newStop: number): Promise<void> {
-  await q(`INSERT INTO trader_stop_changes (trade_id, decision_id, old_stop, new_stop) VALUES ($1,$2,$3,$4)`, [tradeId, decisionId, oldStop, newStop]);
+/** A stop change: by a decision (v1–v3 tightening) or by the code (v4 breakeven, decisionId null). */
+export async function recordStopChange(tradeId: number, decisionId: number | null, oldStop: number, newStop: number, reason?: string): Promise<void> {
+  await q(`INSERT INTO trader_stop_changes (trade_id, decision_id, old_stop, new_stop, reason) VALUES ($1,$2,$3,$4,$5)`, [tradeId, decisionId, oldStop, newStop, reason ?? null]);
 }
 
 export function toOpenTrade(t: TradeRow): OpenTrade {
-  return { id: t.id, side: t.side, qty: t.qty, entryPrice: t.entryPrice, entryAt: t.entryAt, stop: t.stop, target: t.target, maxHoldMinutes: t.maxHoldMinutes };
+  return { id: t.id, side: t.side, qty: t.qty, entryPrice: t.entryPrice, entryAt: t.entryAt, stopInitial: t.stopInitial, stop: t.stop, target: t.target, maxHoldMinutes: t.maxHoldMinutes };
 }
 
 export function toClosed(t: TradeRow): ClosedTrade | null {
@@ -335,15 +336,31 @@ export async function recordVerdict(versionId: number, verdict: "pass" | "fail",
 // ---------------------------------------------------------------- economic calendar
 
 export async function econFor(date: string): Promise<Array<{ id: number; time_et: string; event: string }>> {
-  return (await q(`SELECT id, time_et, event FROM econ_events WHERE date = $1 ORDER BY time_et`, [date])).map((r) => ({ id: Number(r.id), time_et: r.time_et, event: r.event }));
+  return (await q(`SELECT DISTINCT ON (time_et, event) id, time_et, event FROM econ_events WHERE date = $1 ORDER BY time_et, event, id`, [date])).map((r) => ({ id: Number(r.id), time_et: r.time_et, event: r.event }));
+}
+
+/** Add calendar rows from an automatic source unless the same date, time and event is already there. Returns rows added. */
+export async function addEconAuto(rows: Array<{ date: string; time_et: string; event: string }>, source: string): Promise<number> {
+  let n = 0;
+  for (const r of rows) {
+    const res = await q(
+      `INSERT INTO econ_events (date, time_et, event, source)
+       SELECT $1::date, $2, $3, $4 WHERE NOT EXISTS (SELECT 1 FROM econ_events WHERE date = $1::date AND time_et = $2 AND event = $3)
+       RETURNING 1`,
+      [r.date, r.time_et, r.event, source],
+    );
+    n += res.length;
+  }
+  return n;
 }
 
 export async function econUpcoming(from: string) {
-  return (await q(`SELECT id, to_char(date, 'YYYY-MM-DD') AS date, time_et, event FROM econ_events WHERE date >= $1 ORDER BY date, time_et LIMIT 200`, [from])).map((r) => ({
+  return (await q(`SELECT id, to_char(date, 'YYYY-MM-DD') AS date, time_et, event, source FROM econ_events WHERE date >= $1 ORDER BY date, time_et LIMIT 200`, [from])).map((r) => ({
     id: Number(r.id),
     date: r.date as string,
     time_et: r.time_et as string,
     event: r.event as string,
+    source: (r.source as string | null) ?? "manual",
   }));
 }
 

@@ -161,17 +161,31 @@ instead of data.
 The goal is an honest yes/no after about three months. It is not a trading system. Every rule below is enforced
 by code (`config/trader.ts`, `lib/trader/rules.ts`), never by the model.
 
-- **Limits.** QQQ shares only. $10,000 notional per trade (whole shares). One position at a time, at most 3
-  trades a day. No entries before 09:35 or after 15:30 ET, and everything is flat by 15:55. No new entries after 2
-  losing trades in a row, or after a day's loss of 1.5% of notional ($150).
+- **Limits.** QQQ shares only. One position at a time, at most 3 trades a day. No entries before 09:35 or after
+  15:30 ET, and everything is flat by 15:55. No new entries after 2 losing trades in a row, or after a day's loss of
+  $150.
+- **Size and stops (v4).** Every trade risks $50 at its stop: shares = $50 ÷ stop distance, at most $20,000 of
+  QQQ. The stop distance must sit between 0.5× and 2.5× the ATR(14) of regular-session 15-minute bars (never under
+  0.1% or over 2% of price), so stops widen on big-range days and the share count shrinks to keep the risk fixed.
+  The target is at least 1× the stop distance.
+- **Exits (v4).** Stop and target are fixed at entry as a bracket order at the broker. The model can't move them.
+  The code moves the stop to the entry price once, after the trade has been ahead by the amount risked (judged on
+  completed 1-minute bars). Otherwise the exit is the stop, the target, the time limit, 15:55, or the model's
+  "close". A stop change stores the new order id Alpaca returns, because the old id stops working.
+- **Confidence (v4)** is the model's stated chance that the target is hit before the stop. Entries below 55 are
+  rejected. The scoring page checks calibration: entries put at 60% should reach the target first about 60% of the
+  time.
 - **Loop.** A scheduler calls `GET /api/cron/trader` every minute from 09:00 to 16:00 ET. Each tick does the
   following, in order:
   - takes a lease, so ticks never overlap;
+  - before 09:35, once a day, fills the economic calendar (see below);
   - ingests bars and headlines;
   - syncs fills with the broker;
-  - enforces time exits;
-  - on decision minutes, calls the model (a pre-market read at 09:25, then every 5 minutes from 09:35 to
-    15:30, all on the server clock);
+  - enforces time exits and the breakeven move;
+  - on decision minutes (every 5 minutes from 09:35 to 15:30, server clock), calls the model, but only when an
+    action is possible. Flat with the day's trades used up, after the daily stop, or with the gate failed, the slot
+    is logged as "no action possible" without a model call. With trading switched off it is still called: that's
+    a dry run, and its entries are logged as rejected. v4 has no pre-market read;
   - syncs swing ideas;
   - after 15:56, checks the decision gate;
   - writes a heartbeat row.
@@ -180,44 +194,52 @@ by code (`config/trader.ts`, `lib/trader/rules.ts`), never by the model.
   The alert shows on the tab and is emailed if Resend is configured.
 - **What the model sees.**
   - QQQ bars: 1-minute for the last 60 minutes, 5-minute for today, 15-minute for 5 days, daily for 60 days.
+  - The price: the last completed 1-minute bar's close. The bid/ask quote is no longer sent (v4): on Alpaca's free
+    IEX feed it is one exchange's quote, often tens of cents wide, while QQQ's real spread is about a cent. A
+    `data_note` says which feed the bars come from and, on IEX, that volumes are only comparable with each other.
+  - The 15-minute ATR and the stop band and sizing it allows right now.
   - The day so far: prior close, pre-market high and low, today's open, high and low, VWAP, and position in the
     day's range.
   - QQQ against SPY, IWM, TLT and VIXY today.
   - Headlines since its last call, tagged with the advisor's keyword categories.
-  - Today's economic releases, which you enter on the tab, because Alpaca has no economic calendar.
+  - Today's economic releases from the calendar.
   - Its own open position and today's closed trades.
 
   If the news fetch fails, the model is told and the day is flagged.
-- **Reply.** Strict JSON: `{"action": "long"|"short"|"close"|"hold", "confidence": 0-100, "stop", "target",
-  "max_hold_minutes", "catalyst", "thesis" (40 words or fewer)}`. The code rejects and logs any entry whose stop
-  is not 0.15%–0.75% from the price, whose target is less than 1× the stop distance, or that is on the wrong side
-  of the price.
-- **Exits.** Exits are fixed at entry: a bracket order (stop and target at the broker), the time limit, or 15:55.
-  The model may tighten a stop. A wider stop is ignored, and the target can't be removed.
+- **Economic calendar.** Filled before the open each trading day, next to anything you enter on the tab:
+  FOMC decisions from the Fed's meeting calendar, GDP, PCE (personal income and outlays) and the trade balance from
+  BEA's release calendar, and CPI, the jobs report, PPI, retail sales, JOLTS and jobless claims from FRED's release
+  dates. FRED needs `FRED_API_KEY` (free at fred.stlouisfed.org). BLS's own site refuses automated requests, so it
+  isn't used.
+- **Reply.** Strict JSON: `{"action": "long"|"short"|"close"|"hold", "confidence": 0-100|null, "stop", "target",
+  "max_hold_minutes", "catalyst", "thesis" (40 words or fewer)}`. The code rejects and logs any entry outside the
+  stop band, with a target under 1× the stop distance, on the wrong side of the price, or below 55 confidence.
 - **Logged before orders, never edited.** Every decision is logged before any order is sent: the inputs and their
   sha256 hash, the JSON reply and a server timestamp. Database triggers make decisions, versions, verdicts and
   stop changes append-only: UPDATE, DELETE and TRUNCATE all fail.
-- **Data guards.** The code takes no action, and logs "no action: bad data", when:
-  - the latest quote is more than 10 s old;
-  - any of the last 15 one-minute bars is missing;
-  - a bar or quote timestamp is more than 5 s ahead of the server clock.
-
-  Each tick re-fetches the last 16 minutes, so bars that arrive late fill their gaps.
+- **Data guards (v4: bars only).** The code takes no action, and logs "no action: bad data", when more than one of
+  the last 15 one-minute bars is missing (or the latest one is), or a bar is timestamped more than 5 s ahead of the
+  server clock. Each tick re-fetches the last 16 minutes, so bars that arrive late fill their gaps.
 - **Versions.** A version is the sha256 of the model, effort, prompt, reply schema and rules. Changing any of
   them starts a new version, and results are reported per version. Don't tune the prompt on results of the version
   being scored. There's no refusal fallback, because that would silently switch models inside a version.
 - **Scoring** (`/trader/scoring`). Per version, gross and net of $0.01/share slippage each way:
   - trades, win rate, average win and loss, expectancy, total and max drawdown;
   - buy and hold, QQQ open to close on the same days;
-  - random entries: 20 simulated trades per real trade, with the same stop, target and time limit, on the
+  - a VWAP-side rule on the same days, under the same slots, limits, $50 risk sizing and breakeven move: long
+    above VWAP, short below, stop 1× the 15-minute ATR, target 1.5× the stop, 60-minute limit;
+  - random entries: 20 simulated trades per real trade, with the same size, stop, target and time limit, on the
     recorded bars; the page shows the percentile of the real result;
+  - calibration: stated chance of target first against the actual rate;
   - breakdowns by confidence, time of day, direction, catalyst and exit;
   - a "3× hypothetical" (a calculation only);
   - LLM cost per day and per trade.
-- **Decision gate.** After 150 trades **and** 60 trading days, the version gets Pass only if all three hold:
+- **Decision gate.** After 100 trades **and** 40 trading days (about ten weeks at two trades a day), the version
+  gets Pass only if all four hold:
   - net expectancy is above 0;
   - it is above the 95th percentile of random entries;
-  - net P/L ÷ max drawdown beats buy and hold's.
+  - net P/L ÷ max drawdown beats buy and hold's;
+  - net P/L beats the VWAP-side rule's.
 
   Otherwise it's Fail: the version stops entering trades and keeps its record.
 - **Starts off.** Trading is off until you switch it on in the tab. Decisions are logged either way.
@@ -237,7 +259,8 @@ by code (`config/trader.ts`, `lib/trader/rules.ts`), never by the model.
    - Headers: the same `Authorization: Bearer <CRON_SECRET>` and `x-vercel-protection-bypass` as the advisor job.
    - Timeout at its maximum, and **failure emails on**: nothing inside the app can notice if the scheduler
      itself stops.
-3. Enter the week's economic releases on the Day trader tab.
+3. Set `FRED_API_KEY` in Vercel so CPI, jobs and PPI dates reach the calendar, and check the Day trader tab's
+   calendar for anything else that matters that week.
 4. Run one full day with trading **off**. Look at the decision log, the "no action: bad data" count and the
    LLM cost.
 5. Switch on "Paper trading" the day after, if the day looked clean, and check the first live morning around
@@ -245,11 +268,13 @@ by code (`config/trader.ts`, `lib/trader/rules.ts`), never by the model.
 
 **Reading the results honestly.**
 - **The free IEX feed** carries a small share of QQQ's volume. Some minutes have no bar, and prices can sit
-  slightly off the wider market. If "no action: bad data" is frequent, the test needs Alpaca's paid SIP feed
+  slightly off the wider market. The Settings page shows which feed is in use (`ALPACA_FEED`, auto = SIP if the
+  account has it, else IEX). If "no action: bad data" is frequent, the test needs Alpaca's paid SIP feed
   (`ALPACA_FEED=sip`) to mean anything.
 - **Paper fills are generous:** at the quote, with no queue. The $0.01/share slippage covers only part of
   that, so treat a marginal Pass as a Fail.
-- **Missed releases:** if you forget to enter a CPI or Fed day, the model trades through it blind.
+- **Missed releases:** without `FRED_API_KEY` the calendar has no CPI, jobs or PPI dates, and the model trades
+  through them blind.
 
 ## Swing ideas log (Part B)
 
@@ -360,6 +385,7 @@ Fill in `.env.local` (never commit it; `.env*` is git-ignored except `.env.examp
 | `ANTHROPIC_API_KEY` | yes | |
 | `CLAUDE_MODEL` | no | default `claude-opus-5-5` |
 | `DATABASE_URL` | yes | Neon / Vercel Postgres connection string (`POSTGRES_URL` also accepted) |
+| `FRED_API_KEY` | no | day trader's economic calendar: CPI, jobs, PPI, retail sales, JOLTS and claims dates (free at fred.stlouisfed.org) |
 | `RESEND_API_KEY`, `ALERT_EMAIL` | no | only for the 10:51 email; without `RESEND_API_KEY` no email is sent. `ALERT_EMAIL` may be a comma-separated list |
 | `ALERT_FROM` | no | verified Resend sender, default `Book advisor <onboarding@resend.dev>` |
 | `DASHBOARD_USER`, `DASHBOARD_PASSWORD` | yes | basic auth for all pages |

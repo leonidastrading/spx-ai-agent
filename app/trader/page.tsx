@@ -45,7 +45,7 @@ export default async function TraderPage() {
     <>
       <h1>AI day-trader · paper test</h1>
       <section className="card notice small">
-        <b>Paper only.</b> Orders go to the Alpaca <b>paper</b> account (paper-api.alpaca.markets) and nowhere else: QQQ shares, ${TRADER.notional.toLocaleString()} per trade, one position,
+        <b>Paper only.</b> Orders go to the Alpaca <b>paper</b> account (paper-api.alpaca.markets) and nowhere else: QQQ shares, ${TRADER.riskPerTrade} risk per trade (up to ${TRADER.maxNotional.toLocaleString()}), one position,
         at most {TRADER.maxTradesPerDay} trades a day, entries {TRADER.firstEntry}–{TRADER.lastEntry} ET, flat by {TRADER.flatBy}. The question is a yes/no on forward results; nothing here is back-tested.
         {" "}<Link href="/trader/scoring">Scoring and decision gate →</Link>
         <PaperAccount part="trader" />
@@ -218,7 +218,11 @@ export default async function TraderPage() {
 
       <section className="card">
         <h2>Scheduled economic releases</h2>
-        <p className="small secondary">Alpaca has no economic calendar, so enter releases here (CPI, jobs, FOMC…). Each day’s entries are sent to the model.</p>
+        <p className="small secondary">
+          Filled automatically before the open each trading day: FOMC decisions from the Fed, GDP and PCE from BEA, and CPI, jobs, PPI, retail sales,
+          JOLTS and jobless claims from FRED{process.env.FRED_API_KEY?.trim() ? "" : <b> once FRED_API_KEY is set (free at fred.stlouisfed.org; BLS blocks automated access)</b>}.
+          Add anything else here. Each day’s entries are sent to the model.
+        </p>
         <EconEditor events={econ} />
       </section>
     </>

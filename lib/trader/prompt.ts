@@ -3,22 +3,25 @@
 import { NEWS_SCREEN } from "@/config/keywords";
 import { createHash } from "node:crypto";
 import { MODEL_PRICES, TRADER } from "@/config/trader";
-import type { Bar } from "../alpaca";
+import type { Bar, Feed } from "../alpaca";
 import { categorize, type Headline, type KeywordConfig } from "../news";
 import { etToUtc, toEt, type Session } from "../time";
-import { REPLY_JSON_SCHEMA, type ClosedTrade, type OpenTrade } from "./rules";
+import { REPLY_JSON_SCHEMA, stopBand, type ClosedTrade, type OpenTrade } from "./rules";
 
-export const TRADER_SYSTEM_PROMPT = `You are an intraday trader running a forward paper test on QQQ. The question being tested is whether you can day-trade QQQ profitably from live prices and news. Be honest with yourself: "hold" (stay flat) is the right answer most of the time, and a trade needs a specific, current reason.
+export const TRADER_SYSTEM_PROMPT = `You are an intraday trader running a forward paper test on QQQ. The question being tested is whether you can day-trade QQQ profitably from live prices and news. Be honest with yourself: "hold" (stay flat) is the right answer most of the time, and a trade needs a specific, current reason. You are only asked when an action is possible.
 
 Rules the code enforces (replies that break them are rejected and logged):
-- QQQ shares only, fixed $${TRADER.notional.toLocaleString("en-US")} notional, one position at a time, at most ${TRADER.maxTradesPerDay} trades a day.
-- New entries only ${TRADER.firstEntry}–${TRADER.lastEntry} ET; everything is closed at ${TRADER.flatBy} ET.
-- An entry ("long" or "short") must give stop, target and max_hold_minutes. The stop must be ${TRADER.minStopFraction * 100}%–${TRADER.maxStopFraction * 100}% from the current price, the target at least ${TRADER.targetMinMultiple}× the stop distance, both on the correct side.
-- Exits are fixed at entry: stop, target, time limit or ${TRADER.flatBy} ET. While in a position you may reply "hold" with a tighter stop (never wider); "close" exits at market.
-- No new entries after ${TRADER.maxConsecutiveLosses} losing trades in a row or a day's loss of ${TRADER.dailyLossFraction * 100}% of notional.
+- QQQ shares only, one position at a time, at most ${TRADER.maxTradesPerDay} trades a day. New entries only ${TRADER.firstEntry}–${TRADER.lastEntry} ET; everything is closed at ${TRADER.flatBy} ET.
+- The code sets the size: every trade risks $${TRADER.riskPerTrade} at its stop. Shares = $${TRADER.riskPerTrade} ÷ stop distance (at most $${TRADER.maxNotional.toLocaleString("en-US")} of QQQ), so a wider stop means fewer shares, not more risk. Big-range days are tradable with wider stops.
+- An entry ("long" or "short") must give stop, target and max_hold_minutes. The stop distance from price.last must be inside entry_sizing's band (${TRADER.stopMinAtr}–${TRADER.stopMaxAtr}× the 15-minute ATR), the target at least ${TRADER.targetMinMultiple}× the stop distance, both on the correct side.
+- Stop and target are fixed at entry; you cannot move them. The code moves the stop to the entry price once, after the trade has been ahead by the amount risked. While in a position, reply "hold" or "close" (exit at market).
+- confidence: for an entry, your honest estimate (0–100) of the chance that the target is hit before the stop. Entries below ${TRADER.minTargetProbability} are rejected. Calibration is scored: entries you put at 60 should reach the target first about 60% of the time. For "hold" and "close", confidence is null.
+- No new entries after ${TRADER.maxConsecutiveLosses} losing trades in a row or a day's loss of $${TRADER.dailyLossFraction * TRADER.notional}.
 - With no position, "close" is invalid; for "hold"/"close", stop/target/max_hold_minutes may be null.
 
-Reply with JSON only: {"action": "long"|"short"|"close"|"hold", "confidence": 0-100, "stop": price|null, "target": price|null, "max_hold_minutes": n|null, "catalyst": "news"|"technical"|"macro"|"panic_reversal"|"none", "thesis": "at most 40 words"}.`;
+Data: price.last is the close of the last completed 1-minute bar. Read data_note for what the price and volume feed can and cannot tell you.
+
+Reply with JSON only: {"action": "long"|"short"|"close"|"hold", "confidence": 0-100|null, "stop": price|null, "target": price|null, "max_hold_minutes": n|null, "catalyst": "news"|"technical"|"macro"|"panic_reversal"|"none", "thesis": "at most ${TRADER.maxThesisWords} words"}.`;
 
 // ---------------------------------------------------------------- inputs
 
@@ -98,7 +101,12 @@ const barRow = (b: Bar, withDate = false) => {
 export interface TraderInputs {
   now_et: string;
   phase: "premarket" | "intraday";
-  quote: { bid: number; ask: number; mid: number; age_s: number } | null;
+  /** v4: the last completed 1-min bar's close; the quote is no longer sent (see data_note). */
+  price: { last: number | null; bar_et: string | null };
+  data_note: string;
+  /** ATR(14) of regular-session 15-min bars, and what it allows for an entry now. */
+  atr_15m: number | null;
+  entry_sizing: { stop_distance_min: number; stop_distance_max: number; risk_per_trade: number; shares: string } | null;
   qqq: DayStats;
   vs_today_pct: Record<string, number | null>;
   bars_1m_last60: Array<Array<string | number | null>>;
@@ -119,7 +127,8 @@ export function buildInputs(args: {
   phase: "premarket" | "intraday";
   session: Session;
   prior: Session;
-  quote: { bid: number; ask: number; ts: string } | undefined;
+  feed: Feed;
+  atr15: number | null;
   bars1m: Bar[];
   bars15m5d: Bar[];
   bars1d60: Bar[];
@@ -142,14 +151,24 @@ export function buildInputs(args: {
   const vs: Record<string, number | null> = {};
   for (const s of TRADER.contextSymbols) vs[s] = dayStats(done, s, session, prior, now).ret_prev_close_pct;
   vs["QQQ_minus_SPY"] = stats.ret_prev_close_pct !== null && vs.SPY !== null ? r3(stats.ret_prev_close_pct - vs.SPY) : null;
-  const mid = args.quote ? (args.quote.bid + args.quote.ask) / 2 : null;
+  const lastBar = q1[q1.length - 1] ?? null;
+  const last = lastBar ? r2(lastBar.c) : null;
+  const band = last !== null && args.atr15 !== null ? stopBand(last, args.atr15) : null;
   const etOf = (iso: string | null) => (iso ? toEt(new Date(iso)).hhmm : null);
 
   return {
     now_et: `${toEt(now).date} ${toEt(now).hhmm}`,
     phase: args.phase,
-    quote: args.quote
-      ? { bid: args.quote.bid, ask: args.quote.ask, mid: r2(mid)!, age_s: Math.round((now.getTime() - Date.parse(args.quote.ts)) / 100) / 10 }
+    price: { last, bar_et: lastBar ? toEt(new Date(lastBar.ts)).hhmm : null },
+    data_note: dataNote(args.feed),
+    atr_15m: r2(args.atr15),
+    entry_sizing: band
+      ? {
+          stop_distance_min: band.min,
+          stop_distance_max: band.max,
+          risk_per_trade: TRADER.riskPerTrade,
+          shares: `${TRADER.riskPerTrade} ÷ stop distance, at most ${Math.floor(TRADER.maxNotional / last!)} shares`,
+        }
       : null,
     qqq: stats,
     vs_today_pct: vs,
@@ -175,6 +194,13 @@ export function buildInputs(args: {
     trades_left_today: Math.max(0, TRADER.maxTradesPerDay - args.tradesToday),
     entry_blocked: args.entryBlocked,
   };
+}
+
+/** What the bars can and cannot tell the model, by feed. */
+export function dataNote(feed: Feed): string {
+  return feed === "iex"
+    ? "Prices and volumes come from the IEX exchange only (a few percent of US volume), not the whole market. Volumes are only comparable with each other, not with normal market volume. There is no usable bid/ask spread here: QQQ's real spread is about $0.01, so ignore spread and liquidity concerns. A minute with no IEX trade has no bar."
+    : "Prices and volumes are consolidated across all US exchanges (SIP). QQQ's spread is about $0.01.";
 }
 
 export function renderUserPrompt(i: TraderInputs): string {

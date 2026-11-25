@@ -49,7 +49,9 @@ export function TraderControls(props: { enabled: boolean; model: string; effort:
   );
 }
 
-export function EconEditor({ events }: { events: Array<{ id: number; date: string; time_et: string; event: string }> }) {
+const SOURCE: Record<string, string> = { fed: "Fed", bea: "BEA", fred: "FRED", manual: "you" };
+
+export function EconEditor({ events }: { events: Array<{ id: number; date: string; time_et: string; event: string; source?: string }> }) {
   const [f, setF] = useState({ date: "", time_et: "08:30", event: "" });
   const [msg, setMsg] = useState<string | null>(null);
   async function add() {
@@ -65,13 +67,13 @@ export function EconEditor({ events }: { events: Array<{ id: number; date: strin
     <>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Time (ET)</th><th>Release</th><th /></tr></thead>
+          <thead><tr><th>Date</th><th>Time (ET)</th><th>Release</th><th>Source</th><th /></tr></thead>
           <tbody>
             {events.map((e) => (
-              <tr key={e.id}><td>{e.date}</td><td>{e.time_et}</td><td>{e.event}</td>
+              <tr key={e.id}><td>{e.date}</td><td>{e.time_et}</td><td>{e.event}</td><td className="small secondary">{SOURCE[e.source ?? "manual"] ?? e.source}</td>
                 <td><button className="icon" aria-label={`Remove ${e.event}`} onClick={() => del(e.id)}>✕</button></td></tr>
             ))}
-            {events.length === 0 && <tr><td colSpan={4} className="muted">None entered. The model is told no releases are scheduled.</td></tr>}
+            {events.length === 0 && <tr><td colSpan={5} className="muted">Nothing scheduled yet. The calendar fills itself before the open each trading day.</td></tr>}
           </tbody>
         </table>
       </div>

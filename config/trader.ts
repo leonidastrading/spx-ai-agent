@@ -6,27 +6,40 @@
 export const TRADER = {
   symbol: "QQQ",
   contextSymbols: ["SPY", "IWM", "TLT", "VIXY"],
+  /** Reference notional: buy-and-hold baseline, the 3× illustration and the daily loss limit. */
   notional: 10_000,
+  /** v4: dollars lost if the stop is hit (before slippage). Shares = this ÷ stop distance, capped at maxNotional. */
+  riskPerTrade: 50,
+  maxNotional: 20_000,
   maxTradesPerDay: 3,
   /** Server-clock ET times. */
   firstEntry: "09:35",
   lastEntry: "15:30",
   flatBy: "15:55",
-  premarketRead: "09:25",
   decisionEveryMinutes: 5,
   /** Daily stop: no new entries after this many consecutive losers... */
   maxConsecutiveLosses: 2,
   /** ...or a day's realized loss of this fraction of notional. */
   dailyLossFraction: 0.015,
-  /** Stop distance bounds as a fraction of price; target >= targetMinMultiple × stop distance. */
-  minStopFraction: 0.0015,
-  maxStopFraction: 0.0075,
+  /**
+   * v4: stop distance bounds in multiples of ATR(atrPeriod) on regular-session 15-min bars, so stops widen on
+   * volatile days (and share count shrinks to keep riskPerTrade), never below stopFloorFraction or above
+   * stopCapFraction of price. Target >= targetMinMultiple × stop distance.
+   */
+  atrPeriod: 14,
+  stopMinAtr: 0.5,
+  stopMaxAtr: 2.5,
+  stopFloorFraction: 0.001,
+  stopCapFraction: 0.02,
   targetMinMultiple: 1,
+  /** v4: stop and target are fixed at entry; the code moves the stop to the entry price once, when the trade is ahead by this many R. */
+  breakevenAtR: 1,
+  /** v4: "confidence" is the stated chance (%) that the target is hit before the stop; entries below this are rejected. */
+  minTargetProbability: 55,
   minHoldMinutes: 5,
   /** Slippage assumed for "net" results: $ per share, each way. */
   slippagePerShare: 0.01,
-  /** Data guards. */
-  maxQuoteAgeSeconds: 10,
+  /** Data guards (v4: bars only; the quote is not used, see the prompt's feed note). */
   maxClockSkewSeconds: 5,
   /** Minutes of 1-min bars checked for gaps before a decision... */
   barCompletenessMinutes: 15,
@@ -39,9 +52,11 @@ export const TRADER = {
   missedCyclesAlert: 3,
   /** Random-entry baseline: simulated trades per real trade. */
   randomSimsPerTrade: 20,
-  /** Decision gate. */
-  gateMinTrades: 150,
-  gateMinTradingDays: 60,
+  /** Decision gate (v4: 100 trades and 40 trading days, about ten weeks at two trades a day). */
+  gateMinTrades: 100,
+  gateMinTradingDays: 40,
+  /** VWAP-side rule baseline (scoring only): at each decision slot while flat, long above VWAP, short below. */
+  vwapRule: { stopAtr: 1, targetMultiple: 1.5, holdMinutes: 60 },
   gatePercentile: 0.95,
   /** "3× hypothetical" multiplier (TQQQ/SQQQ illustration only). */
   hypotheticalMultiple: 3,

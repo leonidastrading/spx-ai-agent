@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Bar } from "@/lib/alpaca";
-import { buyAndHold, decisionGate, grossPl, randomBaseline, simulateTrade, slippage, stats, type ScoredTrade } from "@/lib/trader/scoring";
+import { buyAndHold, calibration, decisionGate, fifteenMinute, grossPl, randomBaseline, simulateTrade, slippage, stats, vwapRuleDay, type ScoredTrade } from "@/lib/trader/scoring";
 import { etToUtc } from "@/lib/time";
 
 const D = "2024-03-11";
@@ -30,6 +30,18 @@ describe("simulateTrade", () => {
     bars[i] = { ...bars[i], h: 410, l: 390 };
     expect(simulateTrade(bars, D, t("10:00"), "long", 0.002, 0.004, 60)!.reason).toBe("stop");
   });
+  it("v4: size override and the breakeven move (from the bar after the trade is ahead by its risk)", () => {
+    // Up 1R (400 → 400.8 with a 0.2% stop), then back down through the entry.
+    const path = (i: number) => (i < 30 ? 400 : i < 40 ? 400 + (i - 29) * 0.1 : 401 - (i - 39) * 0.1);
+    const bars = day(path, 0);
+    const plain = simulateTrade(bars, D, t("10:00"), "long", 0.002, 0.01, 120, { qty: 7 })!;
+    expect(plain).toMatchObject({ qty: 7, reason: "stop" });
+    expect(plain.gross).toBeCloseTo(-7 * 0.8, 6);
+    const be = simulateTrade(bars, D, t("10:00"), "long", 0.002, 0.01, 120, { qty: 7, breakeven: true })!;
+    expect(be).toMatchObject({ qty: 7, reason: "stop", exit: 400, gross: 0 });
+    expect(be.exitAt).toBeLessThan(plain.exitAt);
+  });
+
   it("time limit and 15:55 exit", () => {
     expect(simulateTrade(day(() => 400, 0), D, t("10:00"), "short", 0.002, 0.004, 30)!).toMatchObject({ reason: "time", gross: 0 });
     expect(simulateTrade(day(() => 400, 0), D, t("15:30"), "long", 0.002, 0.004, 120)!.reason).toBe("eod");
@@ -75,16 +87,51 @@ describe("baselines", () => {
   });
 });
 
-describe("decision gate", () => {
-  const base = { strategyTotal: 2000, strategyMaxDd: 500, bhTotal: 1000, bhMaxDd: 800 };
-  it("waits for 150 trades AND 60 days", () => {
-    expect(decisionGate({ ...base, trades: 200, tradingDays: 59, netExpectancy: 10, percentile: 0.99 }).ready).toBe(false);
-    expect(decisionGate({ ...base, trades: 149, tradingDays: 90, netExpectancy: 10, percentile: 0.99 }).ready).toBe(false);
+describe("VWAP-side rule (same limits, sizing and stops as the trader)", () => {
+  // Earlier day's 15-min bars with a $2 range: ATR 2, so the rule's stop is $2 (1× ATR) and size $50 ÷ $2 = 25.
+  const prior15 = fifteenMinute(day(() => 400, 1, "2024-03-08"), "2024-03-08").map((b) => ({ ...b, h: 401, l: 399 }));
+
+  it("rising day: long above VWAP, at most 3 trades, never overlapping", () => {
+    const trades = vwapRuleDay(day((i) => 400 + i * 0.1), D, prior15);
+    expect(trades.length).toBe(3);
+    expect(trades.every((x) => x.side === "long" && x.reason === "target")).toBe(true);
+    expect(trades[0].qty).toBe(25); // later trades re-size as today's own 15-min bars join the ATR
+    expect(trades[0].entryAt).toBe(t("09:35"));
+    for (let i = 1; i < trades.length; i++) expect(trades[i].entryAt).toBeGreaterThan(trades[i - 1].entryAt);
+    expect(trades[0].net).toBeCloseTo(25 * 3 - slippage(25), 2); // target 1.5 × $2
   });
-  it("pass only if all three checks hold", () => {
-    expect(decisionGate({ ...base, trades: 150, tradingDays: 60, netExpectancy: 10, percentile: 0.96 }).verdict).toBe("pass");
-    expect(decisionGate({ ...base, trades: 150, tradingDays: 60, netExpectancy: 10, percentile: 0.94 }).verdict).toBe("fail");
-    expect(decisionGate({ ...base, trades: 150, tradingDays: 60, netExpectancy: -1, percentile: 0.99 }).verdict).toBe("fail");
-    expect(decisionGate({ ...base, bhTotal: 5000, bhMaxDd: 100, trades: 150, tradingDays: 60, netExpectancy: 10, percentile: 0.99 }).verdict).toBe("fail");
+
+  it("falling day: short below VWAP; without an earlier day it waits for today's ATR", () => {
+    expect(vwapRuleDay(day((i) => 400 - i * 0.1), D, prior15).every((x) => x.side === "short")).toBe(true);
+    // ATR needs 5 ranges: six completed 15-min bars, at 11:00.
+    expect(vwapRuleDay(day((i) => 400 - i * 0.1), D, [])[0].entryAt).toBe(t("11:00"));
+  });
+});
+
+describe("calibration", () => {
+  it("stated chance vs how often the target came first", () => {
+    const mk = (confidence: number, exitReason: string): ScoredTrade => ({
+      id: 1, date: D, side: "long", qty: 10, entryPrice: 1, exitPrice: 1, entryAt: "", exitAt: "", stop: 0, target: 2, maxHoldMinutes: 30, confidence, catalyst: "none", exitReason,
+    });
+    expect(calibration([mk(60, "target"), mk(64, "stop"), mk(62, "target"), mk(66, "time"), mk(85, "target")])).toEqual([
+      { band: "60–69", n: 4, stated: 0.63, targetFirst: 0.5, stopFirst: 0.25, other: 0.25 },
+      { band: "80–100", n: 1, stated: 0.85, targetFirst: 1, stopFirst: 0, other: 0 },
+    ]);
+  });
+});
+
+describe("decision gate", () => {
+  const base = { strategyTotal: 2000, strategyMaxDd: 500, bhTotal: 1000, bhMaxDd: 800, vwapTotal: 500 };
+  it("waits for 100 trades AND 40 days", () => {
+    expect(decisionGate({ ...base, trades: 200, tradingDays: 39, netExpectancy: 10, percentile: 0.99 }).ready).toBe(false);
+    expect(decisionGate({ ...base, trades: 99, tradingDays: 90, netExpectancy: 10, percentile: 0.99 }).ready).toBe(false);
+  });
+  it("pass only if all four checks hold, including beating the VWAP rule", () => {
+    expect(decisionGate({ ...base, trades: 100, tradingDays: 40, netExpectancy: 10, percentile: 0.96 }).verdict).toBe("pass");
+    expect(decisionGate({ ...base, trades: 100, tradingDays: 40, netExpectancy: 10, percentile: 0.94 }).verdict).toBe("fail");
+    expect(decisionGate({ ...base, trades: 100, tradingDays: 40, netExpectancy: -1, percentile: 0.99 }).verdict).toBe("fail");
+    expect(decisionGate({ ...base, bhTotal: 5000, bhMaxDd: 100, trades: 100, tradingDays: 40, netExpectancy: 10, percentile: 0.99 }).verdict).toBe("fail");
+    expect(decisionGate({ ...base, vwapTotal: 2500, trades: 100, tradingDays: 40, netExpectancy: 10, percentile: 0.99 }).verdict).toBe("fail");
+    expect(decisionGate({ ...base, vwapTotal: null, trades: 100, tradingDays: 40, netExpectancy: 10, percentile: 0.99 }).verdict).toBe("fail");
   });
 });

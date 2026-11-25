@@ -35,6 +35,11 @@ function source(): Bar[] {
   return out;
 }
 const BARS = source();
+/** Regular-session 15-min QQQ bars with a $2 range: ATR 2, so at $440 the stop band is $1–$5. */
+const BARS15: Bar[] = [P.date, S.date].flatMap((date) =>
+  Array.from({ length: 26 }, (_, i) => ({ symbol: "QQQ", ts: new Date(etToUtc(date, "09:30").getTime() + i * 900000).toISOString(), o: 440, h: 441, l: 439, c: 440, v: 1, feed: "iex" as const })),
+);
+const qqqBar = (hhmm: string) => BARS.find((b) => b.symbol === "QQQ" && b.ts === etToUtc(S.date, hhmm).toISOString())!;
 
 const data: TraderDeps["data"] = {
   getCalendar: async () => [P, S],
@@ -42,6 +47,7 @@ const data: TraderDeps["data"] = {
   getNews: async () => [],
   getLatestQuotes: async () => ({ QQQ: { ts: new Date(now.getTime() - 2000).toISOString(), bid: 439.99, ask: 440.01 } }),
   getBars: async ({ symbols, start, end, timeframe }) => {
+    if (timeframe === "15Min") return BARS15.filter((b) => Date.parse(b.ts) >= start.getTime() && Date.parse(b.ts) < end.getTime());
     if (timeframe && timeframe !== "1Min") return [{ symbol: "QQQ", ts: start.toISOString(), o: 440, h: 441, l: 439, c: 440, v: 1, feed: "iex" }];
     return BARS.filter((b) => symbols.includes(b.symbol) && Date.parse(b.ts) >= start.getTime() && Date.parse(b.ts) < end.getTime() && !missing.has(b.ts));
   },
@@ -71,7 +77,13 @@ const broker: Broker = {
     return { ...o, legs: o.legs?.map((l) => orders.get(l.id)!) };
   },
   getOrderByClientId: async () => null,
-  replaceStop: async (id, stop) => (brokerCalls.push(`replace ${stop}`), orders.get(id)!),
+  // Like Alpaca: the stop is replaced by a new order with a new id; the old one is dead.
+  replaceStop: async (id, stop) => {
+    brokerCalls.push(`replace ${id} ${stop}`);
+    const old = orders.get(id)!;
+    old.status = "replaced";
+    return order({ type: old.type, side: old.side, status: "held", stop_price: String(stop) });
+  },
   cancel: async (id) => {
     brokerCalls.push(`cancel ${id}`);
     orders.get(id)!.status = "canceled";
@@ -83,19 +95,26 @@ const fill = (id: string, price: number) => Object.assign(orders.get(id)!, { sta
 
 // ------------------------------------------------------------ scripted model
 const replies: string[] = [];
+const prompts: string[] = [];
 let modelCalls = 0;
+let calendarCalls = 0;
 const deps: TraderDeps = {
   data,
   broker: () => broker,
   swingBroker: () => broker,
   ready: { trader: true, swing: true },
-  callModel: async () => {
+  callModel: async ({ user }) => {
     modelCalls++;
+    prompts.push(user);
     return { text: replies.shift() ?? "{}", stopReason: "end_turn", modelServed: "test-model", usage: { input_tokens: 1000, output_tokens: 200 }, costUsd: 0.008 };
   },
   sleep: async () => {},
   clock: () => now,
   notify: async () => false,
+  calendar: async (from) => {
+    calendarCalls++;
+    return { rows: [{ date: from, time_et: "10:00", event: "ISM services", source: "fred" as const }], errors: [], skipped: [] };
+  },
 };
 const tick = (hhmm: string, sec = 5) => {
   now = new Date(etToUtc(S.date, hhmm).getTime() + sec * 1000);
@@ -111,30 +130,37 @@ beforeAll(async () => {
 });
 afterAll(() => setQuerierForTests(null));
 
-describe("trader engine, one morning", () => {
-  it("09:25 pre-market read: logged, no orders", async () => {
-    replies.push(reply({ action: "long", stop: 439, target: 442, max_hold_minutes: 30 }));
-    const r = await tick("09:25");
-    expect(r.status).toBe("ok");
-    const d = await decisions();
-    expect(d).toHaveLength(1);
-    expect(d[0]).toMatchObject({ slot: "2024-03-11 09:25", phase: "premarket", status: "hold" });
-    expect(brokerCalls).toEqual([]);
+describe("trader engine, one morning (v4 rules)", () => {
+  it("09:00 before the open: the economic calendar is filled once a day; no model call", async () => {
+    await tick("09:00");
+    await tick("09:01");
+    expect(calendarCalls).toBe(1);
+    expect(await ts.econFor(S.date)).toMatchObject([{ time_et: "10:00", event: "ISM services" }]);
+    expect(modelCalls).toBe(0);
   });
 
-  it("09:30 is not a decision slot", async () => {
-    await tick("09:30");
-    expect(await decisions()).toHaveLength(1);
+  it("09:25 is not a decision slot any more (no pre-market read)", async () => {
+    await tick("09:25");
+    expect(await decisions()).toHaveLength(0);
+    expect(modelCalls).toBe(0);
   });
 
-  it("09:35 long: decision is logged BEFORE the bracket order; $10k notional", async () => {
+  it("09:35 long: logged BEFORE the bracket; sized by $50 risk; the model sees the last price, not the quote", async () => {
     replies.push(reply({ action: "long", confidence: 72, stop: 439, target: 441.5, max_hold_minutes: 30, catalyst: "technical", thesis: "Holding VWAP after the open." }));
     await tick("09:35");
-    expect(brokerCalls).toEqual(["bracket buy 22 stop 439 target 441.5"]);
+    // $1 stop: $50 ÷ $1 = 50 shares, capped at $20,000 of QQQ = 45.
+    expect(brokerCalls).toEqual(["bracket buy 45 stop 439 target 441.5"]);
     expect(decisionsAtFirstOrder).toBe(1);
     const [t] = await ts.tradesForDate(S.date);
-    expect(t).toMatchObject({ side: "long", qty: 22, status: "pending", stop: 439, target: 441.5, confidence: 72, catalyst: "technical" });
+    expect(t).toMatchObject({ side: "long", qty: 45, status: "pending", stop: 439, target: 441.5, confidence: 72, catalyst: "technical", refPrice: 440 });
     expect(t.clientOrderId).toMatch(/^aitrader-v1-d\d+$/);
+    const sent = JSON.parse(prompts.at(-1)!.slice(prompts.at(-1)!.indexOf("{")));
+    expect(sent.quote).toBeUndefined();
+    expect(sent.price).toEqual({ last: 440, bar_et: "09:34" });
+    expect(sent.data_note).toMatch(/IEX exchange only/);
+    expect(sent.atr_15m).toBe(2);
+    expect(sent.entry_sizing).toMatchObject({ stop_distance_min: 1, stop_distance_max: 5, risk_per_trade: 50 });
+    expect(sent.econ_today).toEqual([{ time_et: "10:00", event: "ISM services" }]);
   });
 
   it("09:36 entry fill is synced; legs recorded", async () => {
@@ -148,31 +174,40 @@ describe("trader engine, one morning", () => {
     expect(u.targetOrderId).toBeTruthy();
   });
 
-  it("09:40 hold with a tighter stop: replaced and logged; 09:45 wider stop is ignored", async () => {
+  it("09:40 a hold can't move the stop any more", async () => {
     replies.push(reply({ action: "hold", stop: 439.5 }));
     await tick("09:40");
-    expect(brokerCalls.at(-1)).toBe("replace 439.5");
-    expect((await ts.tradesForDate(S.date))[0].stop).toBe(439.5);
-    replies.push(reply({ action: "hold", stop: 438 }));
-    await tick("09:45");
-    expect(brokerCalls.at(-1)).toBe("replace 439.5");
-    expect((await ts.tradesForDate(S.date))[0]).toMatchObject({ stop: 439.5, stopInitial: 439 });
+    expect(brokerCalls.some((c) => c.startsWith("replace"))).toBe(false);
+    expect((await ts.tradesForDate(S.date))[0]).toMatchObject({ stop: 439, stopInitial: 439 });
+  });
+
+  it("breakeven: once the trade is ahead by its risk the code moves the stop to entry, once, and keeps the new order id", async () => {
+    const [before] = await ts.tradesForDate(S.date);
+    qqqBar("09:41").h = 441.1; // entry 440.02, risk 1.02: needs 441.04
+    await tick("09:42");
+    const [t] = await ts.tradesForDate(S.date);
+    expect(brokerCalls.at(-1)).toBe(`replace ${before.stopOrderId} 440.02`);
+    expect(t).toMatchObject({ stop: 440.02, stopInitial: 439 });
+    expect(t.stopOrderId).not.toBe(before.stopOrderId); // the replacement's id
+    expect((await pg.query<any>(`SELECT decision_id, old_stop, new_stop, reason FROM trader_stop_changes`)).rows).toEqual([{ decision_id: null, old_stop: 439, new_stop: 440.02, reason: "breakeven" }]);
+    await tick("09:43");
+    expect(brokerCalls.filter((c) => c.startsWith("replace"))).toHaveLength(1);
   });
 
   it("a second entry while in a position is rejected and logged", async () => {
-    replies.push(reply({ action: "short", stop: 441, target: 438.5, max_hold_minutes: 20 }));
+    replies.push(reply({ action: "short", confidence: 60, stop: 441, target: 438.5, max_hold_minutes: 20 }));
     await tick("09:50");
     expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: "already in a position" });
     expect(brokerCalls.filter((c) => c.startsWith("bracket"))).toHaveLength(1);
   });
 
-  it("time limit: legs cancelled, closed at market, then synced as closed", async () => {
+  it("time limit: the live (replacement) stop and the target are cancelled, closed at market, then synced as closed", async () => {
     await tick("10:04"); // entry 09:35:20 + 30 min → due at 10:05:20
     expect((await ts.tradesForDate(S.date))[0].status).toBe("open");
     await tick("10:06"); // not a decision slot: only the exit runs
     const t = (await ts.tradesForDate(S.date))[0];
     expect(t).toMatchObject({ status: "closing", exitReason: "time" });
-    expect(brokerCalls.slice(-3)).toEqual([`cancel ${t.stopOrderId}`, `cancel ${t.targetOrderId}`, "market sell 22"]);
+    expect(brokerCalls.slice(-3)).toEqual([`cancel ${t.stopOrderId}`, `cancel ${t.targetOrderId}`, "market sell 45"]);
     fill(t.closeOrderId!, 440.4);
     await tick("10:07");
     expect((await ts.tradesForDate(S.date))[0]).toMatchObject({ status: "closed", exitPrice: 440.4, exitReason: "time" });
@@ -188,12 +223,15 @@ describe("trader engine, one morning", () => {
     missing.clear();
   });
 
-  it("rules the code enforces: too-wide stop rejected; invalid JSON rejected", async () => {
-    replies.push(reply({ action: "long", stop: 435, target: 450, max_hold_minutes: 30 }));
+  it("rules the code enforces: stop outside the ATR band, low chance of target, invalid JSON", async () => {
+    replies.push(reply({ action: "long", confidence: 70, stop: 434, target: 450, max_hold_minutes: 30 }));
     await tick("10:15");
-    expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: expect.stringMatching(/stop distance/) });
-    replies.push("I think we should buy");
+    expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: expect.stringMatching(/stop distance 6\.00 outside the allowed 1\.00–5\.00/) });
+    replies.push(reply({ action: "long", confidence: 50, stop: 439, target: 441.5, max_hold_minutes: 30 }));
     await tick("10:20");
+    expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: expect.stringMatching(/50% is below 55%/) });
+    replies.push("I think we should buy");
+    await tick("10:25");
     expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: expect.stringMatching(/invalid reply/) });
     expect(brokerCalls.filter((c) => c.startsWith("bracket"))).toHaveLength(1);
   });
@@ -201,10 +239,10 @@ describe("trader engine, one morning", () => {
   it("a slot is decided once, even if the tick runs twice", async () => {
     replies.push(reply({}));
     const calls = modelCalls;
-    await tick("10:25");
-    await tick("10:25", 40);
+    await tick("10:30");
+    await tick("10:30", 40);
     expect(modelCalls).toBe(calls + 1);
-    expect((await decisions()).filter((d) => d.slot === "2024-03-11 10:25")).toHaveLength(1);
+    expect((await decisions()).filter((d) => d.slot === "2024-03-11 10:30")).toHaveLength(1);
   });
 
   it("logged decisions and versions cannot be edited or deleted", async () => {
@@ -213,28 +251,41 @@ describe("trader engine, one morning", () => {
     await expect(pg.query(`UPDATE trader_versions SET model = 'x'`)).rejects.toThrow(/append-only/);
   });
 
-  it("changing the model starts a new version; trading disabled blocks entries", async () => {
+  it("changing the model starts a new version; trading off is a dry run: the model is called, entries rejected", async () => {
     await ts.saveTraderSettings({ enabled: false, model: "claude-sonnet-5-5", effort: "medium" });
-    replies.push(reply({ action: "long", stop: 439, target: 441.5, max_hold_minutes: 30 }));
-    await tick("10:30");
-    const versions = await ts.listVersions();
-    expect(versions.map((v) => v.model)).toEqual(["claude-opus-5-5", "claude-sonnet-5-5"]);
+    replies.push(reply({ action: "long", confidence: 70, stop: 439, target: 441.5, max_hold_minutes: 30 }));
+    await tick("10:35");
+    expect((await ts.listVersions()).map((v) => v.model)).toEqual(["claude-opus-5-5", "claude-sonnet-5-5"]);
     expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: "trading disabled" });
   });
 
   it("without its own paper account the trader logs decisions but never enters", async () => {
     await ts.saveTraderSettings({ enabled: true, model: "claude-sonnet-5-5", effort: "medium" });
     deps.ready.trader = false;
-    replies.push(reply({ action: "long", stop: 439, target: 441.5, max_hold_minutes: 30 }));
+    replies.push(reply({ action: "long", confidence: 70, stop: 439, target: 441.5, max_hold_minutes: 30 }));
     const before = brokerCalls.length;
-    await tick("10:35");
+    await tick("10:40");
     expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: expect.stringMatching(/no paper account of its own/) });
     expect(brokerCalls.length).toBe(before);
     deps.ready.trader = true;
   });
 
+  it("flat with no entry possible (3 trades used), the model isn't called", async () => {
+    await ts.saveTraderSettings({ enabled: true, model: "claude-sonnet-5-5", effort: "medium" });
+    const [v2] = (await ts.listVersions()).slice(-1);
+    for (let i = 0; i < 3; i++) {
+      const d = await ts.logDecision({ versionId: v2.id, slot: `2024-03-11 10:4${i}x`, phase: "intraday", newsOk: true, serverTs: now.toISOString(), inputsHash: null, inputs: null, reply: null, replyText: null, status: "accepted", reason: null, modelServed: null, usage: null, costUsd: null, dataOk: true });
+      const t = await ts.createTrade({ versionId: v2.id, decisionId: d!, date: S.date, side: "long", qty: 1, refPrice: 440, stopInitial: 439, stop: 439, target: 441, maxHoldMinutes: 30, confidence: 60, catalyst: "none", clientOrderId: `limit-${i}` });
+      await ts.updateTrade(t.id, { status: "closed", entryPrice: 440, entryAt: now.toISOString(), exitPrice: 440.5, exitAt: now.toISOString() });
+    }
+    const calls = modelCalls;
+    await tick("10:45");
+    expect(modelCalls).toBe(calls);
+    expect((await decisions()).at(-1)).toMatchObject({ slot: "2024-03-11 10:45", status: "no_action", reason: "no action possible: 3 trades already today" });
+  });
+
   it("heartbeat every tick; off-hours ticks do nothing", async () => {
-    expect((await ts.lastHeartbeat())?.minuteEt).toBe("2024-03-11 10:35");
+    expect((await ts.lastHeartbeat())?.minuteEt).toBe("2024-03-11 10:45");
     const r = await tick("16:30");
     expect(r.status).toBe("skipped");
   });

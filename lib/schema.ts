@@ -219,6 +219,9 @@ CREATE TABLE IF NOT EXISTS trader_stop_changes (
   at timestamptz NOT NULL DEFAULT now()
 );
 CREATE OR REPLACE TRIGGER trader_stop_changes_ro BEFORE UPDATE OR DELETE ON trader_stop_changes FOR EACH ROW EXECUTE FUNCTION forbid_change();
+-- v4: the code's own breakeven move has no decision behind it.
+ALTER TABLE trader_stop_changes ALTER COLUMN decision_id DROP NOT NULL;
+ALTER TABLE trader_stop_changes ADD COLUMN IF NOT EXISTS reason text;
 
 CREATE TABLE IF NOT EXISTS trader_heartbeats (
   id bigserial PRIMARY KEY,
@@ -262,6 +265,8 @@ CREATE TABLE IF NOT EXISTS econ_events (
   event text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+-- manual | fed | bea | fred (automatic rows are added before the open each trading day).
+ALTER TABLE econ_events ADD COLUMN IF NOT EXISTS source text;
 
 -- Lease so overlapping cron ticks don't act twice.
 CREATE TABLE IF NOT EXISTS trader_lock (
