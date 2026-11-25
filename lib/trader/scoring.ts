@@ -7,6 +7,7 @@ import { TRADER } from "@/config/trader";
 import type { Bar } from "../alpaca";
 import { mulberry32 } from "../scoring";
 import { etToUtc, toEt } from "../time";
+import { atr, positionSize, stopBand } from "./rules";
 
 export interface ScoredTrade {
   id: number;
@@ -78,12 +79,16 @@ export interface SimResult {
   qty: number;
   reason: "stop" | "target" | "time" | "eod";
   gross: number;
+  /** Start of the bar the exit happened in (ms). */
+  exitAt: number;
 }
 
 /**
  * Simulate one trade on a day's regular-session 1-min bars (ascending): enter at
  * the open of the first bar at/after `entryAt`, exit on stop/target (stop first
  * if both are touched in the same bar), at the time limit, or at the flat-by time.
+ * `opts.qty` overrides the legacy $notional sizing; `opts.breakeven` applies v4's one move of the stop to the
+ * entry price from the bar after the trade has been ahead by breakevenAtR × its risk.
  */
 export function simulateTrade(
   bars: Bar[],
@@ -93,21 +98,26 @@ export function simulateTrade(
   stopFrac: number,
   targetFrac: number,
   holdMinutes: number,
+  opts: { qty?: number; breakeven?: boolean } = {},
 ): SimResult | null {
   const i0 = bars.findIndex((b) => Date.parse(b.ts) >= entryAt);
   if (i0 < 0) return null;
   const entry = bars[i0].o;
-  const qty = Math.floor(TRADER.notional / entry);
+  const qty = opts.qty ?? Math.floor(TRADER.notional / entry);
   if (qty < 1) return null;
   const long = side === "long";
-  const stop = long ? entry * (1 - stopFrac) : entry * (1 + stopFrac);
+  let stop = long ? entry * (1 - stopFrac) : entry * (1 + stopFrac);
+  const risk = entry * stopFrac;
+  let movedToBreakeven = false;
   const target = long ? entry * (1 + targetFrac) : entry * (1 - targetFrac);
   const deadline = Math.min(Date.parse(bars[i0].ts) + holdMinutes * 60000, etToUtc(date, TRADER.flatBy).getTime());
   let exit = bars[bars.length - 1].c;
   let reason: SimResult["reason"] = "eod";
+  let exitAt = Date.parse(bars[bars.length - 1].ts);
   for (let i = i0; i < bars.length; i++) {
     const b = bars[i];
     const t = Date.parse(b.ts);
+    exitAt = t;
     if (t >= deadline) {
       exit = b.o;
       reason = deadline < etToUtc(date, TRADER.flatBy).getTime() ? "time" : "eod";
@@ -125,8 +135,13 @@ export function simulateTrade(
       reason = "target";
       break;
     }
+    // Takes effect from the next bar, as the live code checks completed bars.
+    if (opts.breakeven && !movedToBreakeven && (long ? b.h >= entry + TRADER.breakevenAtR * risk : b.l <= entry - TRADER.breakevenAtR * risk)) {
+      stop = entry;
+      movedToBreakeven = true;
+    }
   }
-  return { entry, exit, qty, reason, gross: r2((long ? 1 : -1) * (exit - entry) * qty) };
+  return { entry, exit, qty, reason, gross: r2((long ? 1 : -1) * (exit - entry) * qty), exitAt };
 }
 
 function hash(s: string): number {
@@ -145,7 +160,7 @@ function hash(s: string): number {
 export function randomBaseline(
   trades: ScoredTrade[],
   barsByDate: Map<string, Bar[]>,
-  opts: { perTrade?: number; histories?: number; seed?: number } = {},
+  opts: { perTrade?: number; histories?: number; seed?: number; breakeven?: boolean } = {},
 ): { simsPerTrade: number[][]; expectancies: number[]; percentile: number | null; mean: number | null; p95: number | null } {
   const perTrade = opts.perTrade ?? TRADER.randomSimsPerTrade;
   const simsPerTrade: number[][] = [];
@@ -161,7 +176,7 @@ export function randomBaseline(
     for (let k = 0; k < perTrade && bars.length; k++) {
       const at = from + Math.floor(rand() * (minutes + 1)) * 60000;
       const side = rand() < 0.5 ? "long" : "short";
-      const s = simulateTrade(bars, t.date, at, side, stopFrac, targetFrac, t.maxHoldMinutes);
+      const s = simulateTrade(bars, t.date, at, side, stopFrac, targetFrac, t.maxHoldMinutes, { qty: t.qty, breakeven: opts.breakeven });
       if (s) sims.push(r2(s.gross - slippage(s.qty)));
     }
     simsPerTrade.push(sims);
@@ -203,6 +218,101 @@ export function buyAndHold(barsByDate: Map<string, Bar[]>, dates: string[]): Arr
     out.push({ date: d, gross, net: r2(gross - slippage(qty)) });
   }
   return out;
+}
+
+/** 15-min bars of the regular session aggregated from 1-min bars (ascending, one day). */
+export function fifteenMinute(day: Bar[], date: string): Bar[] {
+  const open = etToUtc(date, "09:30").getTime();
+  const out: Bar[] = [];
+  for (const b of day) {
+    const ts = new Date(open + Math.floor((Date.parse(b.ts) - open) / 900000) * 900000).toISOString();
+    const last = out[out.length - 1];
+    if (last && last.ts === ts) {
+      last.h = Math.max(last.h, b.h);
+      last.l = Math.min(last.l, b.l);
+      last.c = b.c;
+      last.v += b.v;
+    } else out.push({ ...b, ts });
+  }
+  return out;
+}
+
+export interface RuleTrade {
+  date: string;
+  side: "long" | "short";
+  entryAt: number;
+  qty: number;
+  gross: number;
+  net: number;
+  reason: SimResult["reason"];
+}
+
+/**
+ * VWAP-side rule under the trader's own limits: at each decision slot while flat (entries 09:35–15:30 ET, every
+ * decisionEveryMinutes), long if the last completed 1-min close is above the session VWAP, short if below; stop
+ * vwapRule.stopAtr × the 15-min ATR (inside the same stop band), target vwapRule.targetMultiple × the stop, time
+ * limit vwapRule.holdMinutes, $riskPerTrade sizing, breakeven move, at most maxTradesPerDay, and the same daily stop.
+ * `prior15` are earlier days' 15-min bars (ascending) so the ATR is ready at 09:35.
+ */
+export function vwapRuleDay(day: Bar[], date: string, prior15: Bar[]): RuleTrade[] {
+  const out: RuleTrade[] = [];
+  if (!day.length) return out;
+  const day15 = fifteenMinute(day, date);
+  const first = etToUtc(date, TRADER.firstEntry).getTime();
+  const last = etToUtc(date, TRADER.lastEntry).getTime();
+  const step = TRADER.decisionEveryMinutes * 60000;
+  let freeFrom = first;
+  let losses = 0;
+  let dayPl = 0;
+  for (let t = first; t <= last && out.length < TRADER.maxTradesPerDay; t += step) {
+    if (t < freeFrom) continue;
+    if (losses >= TRADER.maxConsecutiveLosses || -dayPl >= TRADER.dailyLossFraction * TRADER.notional) break;
+    const done = day.filter((b) => Date.parse(b.ts) + 60000 <= t);
+    if (!done.length) continue;
+    const vol = done.reduce((a, b) => a + b.v, 0);
+    const vwap = vol > 0 ? done.reduce((a, b) => a + ((b.h + b.l + b.c) / 3) * b.v, 0) / vol : done.reduce((a, b) => a + b.c, 0) / done.length;
+    const price = done[done.length - 1].c;
+    if (price === vwap) continue;
+    const a15 = atr([...prior15, ...day15.filter((b) => Date.parse(b.ts) + 900000 <= t)]);
+    if (a15 === null) continue;
+    const band = stopBand(price, a15);
+    const stopDist = Math.min(Math.max(TRADER.vwapRule.stopAtr * a15, band.min), band.max);
+    const qty = positionSize(price, stopDist);
+    if (qty < 1) continue;
+    const side = price > vwap ? "long" : "short";
+    const sim = simulateTrade(day, date, t, side, stopDist / price, (TRADER.vwapRule.targetMultiple * stopDist) / price, TRADER.vwapRule.holdMinutes, { qty, breakeven: true });
+    if (!sim) break;
+    const net = r2(sim.gross - slippage(qty));
+    out.push({ date, side, entryAt: t, qty, gross: sim.gross, net, reason: sim.reason });
+    dayPl += sim.gross;
+    losses = sim.gross < 0 ? losses + 1 : 0;
+    freeFrom = sim.exitAt + 60000;
+  }
+  return out;
+}
+
+/**
+ * Calibration of v4 entries: "confidence" is the stated chance of the target before the stop. Per band, the mean
+ * stated chance against how often the target was actually hit first (exits by stop count as misses; time, end of
+ * day and model exits are counted apart).
+ */
+export function calibration(trades: ScoredTrade[]): Array<{ band: string; n: number; stated: number; targetFirst: number; stopFirst: number; other: number }> {
+  const bands: Array<[string, number, number]> = [["<55", 0, 55], ["55–59", 55, 60], ["60–69", 60, 70], ["70–79", 70, 80], ["80–100", 80, 101]];
+  return bands
+    .map(([band, lo, hi]) => {
+      const ts = trades.filter((t) => t.confidence >= lo && t.confidence < hi);
+      const n = ts.length;
+      const share = (f: (t: ScoredTrade) => boolean) => (n ? ts.filter(f).length / n : 0);
+      return {
+        band,
+        n,
+        stated: n ? ts.reduce((a, t) => a + t.confidence, 0) / n / 100 : 0,
+        targetFirst: share((t) => t.exitReason === "target"),
+        stopFirst: share((t) => t.exitReason === "stop"),
+        other: share((t) => t.exitReason !== "target" && t.exitReason !== "stop"),
+      };
+    })
+    .filter((b) => b.n > 0);
 }
 
 /** Return per unit of drawdown; the drawdown floor (1% of notional) avoids dividing by ~0. */
@@ -251,6 +361,8 @@ export function decisionGate(args: {
   strategyMaxDd: number;
   bhTotal: number;
   bhMaxDd: number;
+  /** VWAP-side rule's net total over the same days (null when it couldn't be simulated). */
+  vwapTotal: number | null;
 }): GateResult {
   const ready = args.trades >= TRADER.gateMinTrades && args.tradingDays >= TRADER.gateMinTradingDays;
   const stratDd = ddAdjusted(args.strategyTotal, args.strategyMaxDd);
@@ -266,6 +378,11 @@ export function decisionGate(args: {
       label: "Beats buy and hold, drawdown-adjusted",
       ok: stratDd > bhDd,
       detail: `net P/L ÷ max drawdown: ${stratDd.toFixed(2)} vs buy and hold ${bhDd.toFixed(2)}`,
+    },
+    {
+      label: "Beats the VWAP-side rule (same days, stops and limits)",
+      ok: args.vwapTotal === null ? null : args.strategyTotal > args.vwapTotal,
+      detail: args.vwapTotal === null ? "rule not simulated yet" : `net $${args.strategyTotal.toFixed(2)} vs rule $${args.vwapTotal.toFixed(2)}`,
     },
   ];
   return {

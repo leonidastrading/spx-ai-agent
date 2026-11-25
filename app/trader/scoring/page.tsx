@@ -57,7 +57,7 @@ export default async function TraderScoring({ searchParams }: { searchParams: Pr
         </h2>
         <p className="small secondary">
           Decided after {TRADER.gateMinTrades} trades <b>and</b> {TRADER.gateMinTradingDays} trading days (whichever comes later): now {r.trades.length} trades over {r.days.length} days.
-          Pass only if all three hold; otherwise Fail, and this version stops trading but keeps its record.
+          Pass only if all four hold; otherwise Fail, and this version stops trading but keeps its record.
         </p>
         <ul>
           {r.gate.checks.map((c) => (
@@ -73,7 +73,12 @@ export default async function TraderScoring({ searchParams }: { searchParams: Pr
           <tbody>
             <StatsRow label="AI trader, gross" s={r.gross} />
             <StatsRow label="AI trader, net" s={r.net} />
-            <StatsRow label="Buy and hold QQQ, net" s={r.buyHold.net} note={`open→close each of the ${r.buyHold.days} days the version ran, same $${TRADER.notional.toLocaleString()} notional`} />
+            <StatsRow label="Buy and hold QQQ, net" s={r.buyHold.net} note={`open→close each of the ${r.buyHold.days} days the version ran, $${TRADER.notional.toLocaleString()} notional`} />
+            <StatsRow
+              label="VWAP-side rule, net"
+              s={r.vwapRule.net}
+              note={`same ${r.vwapRule.days} days, slots, limits, $${TRADER.riskPerTrade} risk sizing and breakeven move: long above VWAP, short below, stop ${TRADER.vwapRule.stopAtr}× 15-min ATR, target ${TRADER.vwapRule.targetMultiple}× stop, ${TRADER.vwapRule.holdMinutes}-minute limit`}
+            />
             <StatsRow label={`${TRADER.hypotheticalMultiple}× hypothetical, net`} s={r.hypothetical3x.net} note="CALCULATION ONLY: the same trades × 3, to show what TQQQ/SQQQ would have amplified. Not traded." />
           </tbody>
         </table></div>
@@ -89,6 +94,23 @@ export default async function TraderScoring({ searchParams }: { searchParams: Pr
           Real net expectancy {signed(r.net.expectancy)} sits at the <b>{r.random.percentile === null ? "—" : `${(r.random.percentile * 100).toFixed(1)}th`}</b> percentile
           of random histories (random mean {usd(r.random.mean)}, 95th percentile {usd(r.random.p95)}).
         </p>
+      </section>
+
+      <section className="card">
+        <h2>Calibration (stated chance of target before stop)</h2>
+        <p className="small secondary">
+          From v4, confidence is the model’s stated chance that the target is hit before the stop. A calibrated model’s 60% entries reach the target first
+          about 60% of the time. Exits by time, end of day or the model’s own close count as neither.
+        </p>
+        <div className="table-wrap"><table>
+          <thead><tr><th>Stated</th><th className="num">N</th><th className="num">Mean stated</th><th className="num">Target first</th><th className="num">Stop first</th><th className="num">Other exit</th></tr></thead>
+          <tbody>
+            {r.calibration.map((b) => (
+              <tr key={b.band}><td>{b.band}</td><td className="num">{b.n}</td><td className="num">{pct(b.stated)}</td><td className="num">{pct(b.targetFirst)}</td><td className="num">{pct(b.stopFirst)}</td><td className="num">{pct(b.other)}</td></tr>
+            ))}
+            {r.calibration.length === 0 && <tr><td colSpan={6} className="muted">No closed trades yet.</td></tr>}
+          </tbody>
+        </table></div>
       </section>
 
       <section className="card">
