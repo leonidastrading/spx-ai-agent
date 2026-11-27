@@ -39,11 +39,30 @@ export function hasDatabase(): boolean {
 
 let schemaReady: Promise<void> | null = null;
 
+/**
+ * Several crons cold-start at the same minute (09:00) and each runs the schema. Two concurrent
+ * `CREATE OR REPLACE FUNCTION/TRIGGER` on the same object fail with "tuple concurrently updated" (and two
+ * concurrent CREATEs with a duplicate-key error). Every statement is idempotent, so retry it after the other
+ * instance has finished.
+ */
+async function schemaStatement(st: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await db().query(st);
+      return;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (attempt >= 4 || !/tuple concurrently updated|duplicate key value|already exists/i.test(msg)) throw err;
+      await new Promise((r) => setTimeout(r, 100 * 2 ** attempt + Math.random() * 100));
+    }
+  }
+}
+
 /** Create tables on first use (idempotent), once per server instance. */
 function ensureSchema(): Promise<void> {
   if (!schemaReady) {
     schemaReady = (async () => {
-      for (const st of schemaStatements()) await db().query(st);
+      for (const st of schemaStatements()) await schemaStatement(st);
     })().catch((err) => {
       schemaReady = null;
       throw err;
