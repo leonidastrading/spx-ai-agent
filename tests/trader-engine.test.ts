@@ -227,9 +227,9 @@ describe("trader engine, one morning (v4 rules)", () => {
     replies.push(reply({ action: "long", confidence: 70, stop: 434, target: 450, max_hold_minutes: 30 }));
     await tick("10:15");
     expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: expect.stringMatching(/stop distance 6\.00 outside the allowed 1\.00–5\.00/) });
-    replies.push(reply({ action: "long", confidence: 50, stop: 439, target: 441.5, max_hold_minutes: 30 }));
+    replies.push(reply({ action: "long", confidence: 40, stop: 439, target: 441.5, max_hold_minutes: 30 }));
     await tick("10:20");
-    expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: expect.stringMatching(/50% is below 55%/) });
+    expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: expect.stringMatching(/40% is not above the 40% break-even/) });
     replies.push("I think we should buy");
     await tick("10:25");
     expect((await decisions()).at(-1)).toMatchObject({ status: "rejected", reason: expect.stringMatching(/invalid reply/) });

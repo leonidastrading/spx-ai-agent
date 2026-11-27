@@ -161,6 +161,13 @@ export function positionSize(price: number, stopDist: number): number {
   return Math.max(0, Math.min(Math.floor(TRADER.riskPerTrade / stopDist), Math.floor(TRADER.maxNotional / price)));
 }
 
+const r1 = (x: number) => Math.round(x * 10) / 10;
+
+/** v5: % chance of target-before-stop at which a trade breaks even (before costs): stop ÷ (stop + target). */
+export function breakEvenRate(stopDist: number, targetDist: number): number {
+  return (100 * stopDist) / (stopDist + targetDist);
+}
+
 /**
  * Turn a model reply into something the code may act on. `price` is the reference price (the last completed
  * 1-min bar's close) and `atr15` the 15-min ATR at decision time. v4: a hold never changes the stop.
@@ -176,9 +183,7 @@ export function validateAction(reply: Reply, price: number, now: Date, s: DaySta
   if (blocked) return { ok: false, reason: blocked };
   const { stop, target, max_hold_minutes: hold, confidence } = reply;
   if (stop === null || target === null || hold === null) return { ok: false, reason: "entry needs stop, target and max_hold_minutes" };
-  if (confidence === null || confidence < TRADER.minTargetProbability) {
-    return { ok: false, reason: `chance of target before stop ${confidence ?? "missing"}% is below ${TRADER.minTargetProbability}%` };
-  }
+  if (confidence === null) return { ok: false, reason: "entry needs confidence (chance of target before stop)" };
   if (!(price > 0)) return { ok: false, reason: "no reference price" };
   const long = reply.action === "long";
   if (long ? !(stop < price && target > price) : !(stop > price && target < price)) {
@@ -192,6 +197,10 @@ export function validateAction(reply: Reply, price: number, now: Date, s: DaySta
   }
   if (Math.abs(target - price) < TRADER.targetMinMultiple * stopDist - 1e-9) {
     return { ok: false, reason: `target distance ${Math.abs(target - price).toFixed(2)} < ${TRADER.targetMinMultiple}× stop distance ${stopDist.toFixed(2)}` };
+  }
+  const needed = breakEvenRate(stopDist, Math.abs(target - price)) + TRADER.minEdgePoints;
+  if (!(confidence > needed + 1e-9)) {
+    return { ok: false, reason: `chance of target before stop ${confidence}% is not above the ${r1(needed)}% break-even for this reward-to-risk` };
   }
   if (hold < TRADER.minHoldMinutes) return { ok: false, reason: `max_hold_minutes ${hold} < ${TRADER.minHoldMinutes}` };
   const qty = positionSize(price, stopDist);

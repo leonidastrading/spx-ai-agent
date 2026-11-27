@@ -297,7 +297,7 @@ export function vwapRuleDay(day: Bar[], date: string, prior15: Bar[]): RuleTrade
  * day and model exits are counted apart).
  */
 export function calibration(trades: ScoredTrade[]): Array<{ band: string; n: number; stated: number; targetFirst: number; stopFirst: number; other: number }> {
-  const bands: Array<[string, number, number]> = [["<55", 0, 55], ["55–59", 55, 60], ["60–69", 60, 70], ["70–79", 70, 80], ["80–100", 80, 101]];
+  const bands: Array<[string, number, number]> = [["<30", 0, 30], ["30–39", 30, 40], ["40–49", 40, 50], ["50–59", 50, 60], ["60–69", 60, 70], ["70–79", 70, 80], ["80–100", 80, 101]];
   return bands
     .map(([band, lo, hi]) => {
       const ts = trades.filter((t) => t.confidence >= lo && t.confidence < hi);

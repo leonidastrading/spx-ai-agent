@@ -34,8 +34,15 @@ export const TRADER = {
   targetMinMultiple: 1,
   /** v4: stop and target are fixed at entry; the code moves the stop to the entry price once, when the trade is ahead by this many R. */
   breakevenAtR: 1,
-  /** v4: "confidence" is the stated chance (%) that the target is hit before the stop; entries below this are rejected. */
-  minTargetProbability: 55,
+  /**
+   * "confidence" is the stated chance (%) that the target is hit before the stop. v5: an entry needs a positive
+   * expected value by that estimate: confidence above the break-even rate for its reward-to-risk,
+   * 100 × stop distance ÷ (stop distance + target distance) (50 at 1:1, 40 at 1.5:1, 33 at 2:1), plus this margin.
+   * (v4 required 55 at any reward-to-risk, which an honest estimate almost never clears: no trades.)
+   */
+  minEdgePoints: 0,
+  /** v5: what the prompt asks for on a normal session (the hard limit is maxTradesPerDay). */
+  targetTradesPerDay: 2,
   minHoldMinutes: 5,
   /** Slippage assumed for "net" results: $ per share, each way. */
   slippagePerShare: 0.01,

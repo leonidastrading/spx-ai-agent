@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Bar } from "@/lib/alpaca";
 import {
   atr, breakevenStop, dailyStopHit, dataProblems, decisionSlot, entryBlocked, parseReply, parseReplyChecked, positionSize, regularSession, stopBand, timeExitDue,
-  validateAction, type DayState, type OpenTrade, type Reply,
+  breakEvenRate, validateAction, type DayState, type OpenTrade, type Reply,
 } from "@/lib/trader/rules";
 import { etToUtc } from "@/lib/time";
 
@@ -63,10 +63,17 @@ describe("validateAction (code-enforced rules)", () => {
     expect(validateAction(reply({}), price, at("10:00"), flat, null)).toMatchObject({ ok: false, reason: expect.stringMatching(/no 15-min ATR/) });
   });
 
-  it("confidence is the chance of target before stop: entries need at least 55", () => {
-    expect(validateAction(reply({ confidence: 54 }), price, at("10:00"), flat, ATR)).toMatchObject({ ok: false, reason: expect.stringMatching(/54% is below 55%/) });
-    expect(validateAction(reply({ confidence: null }), price, at("10:00"), flat, ATR)).toMatchObject({ ok: false, reason: expect.stringMatching(/missing/) });
-    expect(validateAction(reply({ confidence: 55 }), price, at("10:00"), flat, ATR)).toMatchObject({ ok: true });
+  it("v5: confidence (chance of target before stop) must beat the break-even rate for the reward-to-risk", () => {
+    expect(breakEvenRate(1, 1)).toBe(50);
+    expect(breakEvenRate(1, 1.5)).toBe(40);
+    // stop 1.5, target 2: break-even 42.9%
+    expect(validateAction(reply({ confidence: 42 }), price, at("10:00"), flat, ATR)).toMatchObject({ ok: false, reason: expect.stringMatching(/42% is not above the 42\.9% break-even/) });
+    expect(validateAction(reply({ confidence: 43 }), price, at("10:00"), flat, ATR)).toMatchObject({ ok: true });
+    // 1:1 needs more than 50; 2:1 only more than 33.3
+    expect(validateAction(reply({ stop: 498, target: 502, confidence: 50 }), price, at("10:00"), flat, ATR)).toMatchObject({ ok: false });
+    expect(validateAction(reply({ stop: 498, target: 502, confidence: 51 }), price, at("10:00"), flat, ATR)).toMatchObject({ ok: true });
+    expect(validateAction(reply({ stop: 498, target: 504, confidence: 35 }), price, at("10:00"), flat, ATR)).toMatchObject({ ok: true });
+    expect(validateAction(reply({ confidence: null }), price, at("10:00"), flat, ATR)).toMatchObject({ ok: false, reason: expect.stringMatching(/needs confidence/) });
   });
 
   it("target must be at least 1× the stop distance, on the right side", () => {
