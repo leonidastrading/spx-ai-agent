@@ -172,9 +172,13 @@ by code (`config/trader.ts`, `lib/trader/rules.ts`), never by the model.
   The code moves the stop to the entry price once, after the trade has been ahead by the amount risked (judged on
   completed 1-minute bars). Otherwise the exit is the stop, the target, the time limit, 15:55, or the model's
   "close". A stop change stores the new order id Alpaca returns, because the old id stops working.
-- **Confidence (v4)** is the model's stated chance that the target is hit before the stop. Entries below 55 are
-  rejected. The scoring page checks calibration: entries put at 60% should reach the target first about 60% of the
-  time.
+- **Confidence** is the model's stated chance that the target is hit before the stop. v5: an entry needs a
+  positive expected value by that estimate, i.e. confidence above the break-even rate for the reward-to-risk it
+  chose, stop distance ÷ (stop + target distance): 50% at 1:1, 40% at 1.5:1, 33% at 2:1. (v4 required 55% at any
+  reward-to-risk. An honest estimate almost never clears that at 1:1 or wider, so v4 took no trades.) The scoring
+  page checks calibration: entries put at 45% should reach the target first about 45% of the time.
+- **Trades per day (v5).** The prompt asks for about 2 trades on a normal session (at most 3), taking the best
+  setups the day offers rather than waiting for a perfect one, and never a trade without a specific reason.
 - **Loop.** A scheduler calls `GET /api/cron/trader` every minute from 09:00 to 16:00 ET. Each tick does the
   following, in order:
   - takes a lease, so ticks never overlap;
@@ -213,7 +217,7 @@ by code (`config/trader.ts`, `lib/trader/rules.ts`), never by the model.
   isn't used.
 - **Reply.** Strict JSON: `{"action": "long"|"short"|"close"|"hold", "confidence": 0-100|null, "stop", "target",
   "max_hold_minutes", "catalyst", "thesis" (40 words or fewer)}`. The code rejects and logs any entry outside the
-  stop band, with a target under 1× the stop distance, on the wrong side of the price, or below 55 confidence.
+  stop band, with a target under 1× the stop distance, on the wrong side of the price, or with confidence not above its break-even rate.
 - **Logged before orders, never edited.** Every decision is logged before any order is sent: the inputs and their
   sha256 hash, the JSON reply and a server timestamp. Database triggers make decisions, versions, verdicts and
   stop changes append-only: UPDATE, DELETE and TRUNCATE all fail.
